@@ -114,7 +114,7 @@ implemented for execution. This checklist does not promise another SQL dialect.
 ## Execution and delivery
 
 - [x] `to :sqliteQuery statement`: deterministic compilation to `text` and `params` without mutating input.
-- [ ] Preserve SQLite numeric and null parameter semantics using package-owned scoped functions; keep native functions unchanged.
+- [x] Preserve SQLite numeric and null parameter semantics using package-owned scoped functions; keep native functions unchanged.
 - [x] `sqliteExecute db statement`: native query rows; empty result for commands without rows; caller-owned connection.
 - [x] `sqliteTable db statement`: terminal tables with optional `.header:` and empty-result handling.
 - [x] Existing Unitt specifications and runnable examples cover the completed implementation (180 assertions at the start of this round).

@@ -245,6 +245,24 @@ _sqlQuote: $[name] -> join.with:"." map split.by:"." name 'part [
 ]
 
 _sqlRender: $[node output] [
+    ; These adapters exist only during rendering; native Arturo functions stay intact.
+    _sqliteScalar: $[scalar sink] [
+        rendered: _sqlRender scalar sink
+        if scalar\kind = "value" [
+            storage: case type scalar\value [
+                :integer ["INTEGER"]
+                :floating ["REAL"]
+                :logical ["INTEGER"]
+                any [null]
+            ]
+            unless null? storage -> return join @["CAST(" rendered " AS " storage ")"]
+        ]
+        rendered
+    ]
+    _sqliteComparable: $[scalar peer sink] [
+        ; A column applies its own affinity; scalar expressions have no column affinity.
+        (peer\kind = "identifier") ? [_sqlRender scalar sink] [_sqliteScalar scalar sink]
+    ]
     case node\kind [
         "schemaValue" [
             value: node\value
@@ -254,19 +272,19 @@ _sqlRender: $[node output] [
             return to :string value
         ]
         "alias" -> return join @[_sqlRender node\argument output " AS " _sqlQuote node\value]
-        "function" -> return join @[node\operator "(" join.with:", " map node\arguments 'argument -> _sqlRender argument output ")"]
+        "function" -> return join @[node\operator "(" join.with:", " map node\arguments 'argument -> _sqliteScalar argument output ")"]
         "subquery" -> return join @["(" _sqlCompileInto node\query output ")"]
         "quantified" -> _sqlFail "SQLite does not support ALL or ANY comparisons"
         "exists" -> return join @["EXISTS " _sqlRender node\argument output]
         "negation" -> return join @["NOT (" _sqlRender node\argument output ")"]
-        "in" -> return join @[_sqlRender node\left output " IN (" join.with:", " map node\arguments 'argument -> _sqlRender argument output ")"]
-        "between" -> return join @[_sqlRender node\left output " BETWEEN " _sqlRender first node\arguments output " AND " _sqlRender last node\arguments output]
+        "in" -> return join @[_sqlRender node\left output " IN (" join.with:", " map node\arguments 'argument -> _sqliteComparable argument node\left output ")"]
+        "between" -> return join @[_sqlRender node\left output " BETWEEN " _sqliteComparable first node\arguments node\left output " AND " _sqliteComparable last node\arguments node\left output]
         "choose" [
             result: "CASE"
             loop node\branches 'branch [
-                result: join @[result " WHEN " _sqlRender branch\predicate output " THEN " _sqlRender branch\value output]
+                result: join @[result " WHEN " _sqlRender branch\predicate output " THEN " _sqliteScalar branch\value output]
             ]
-            unless null? node\fallback -> result: join @[result " ELSE " _sqlRender node\fallback output]
+            unless null? node\fallback -> result: join @[result " ELSE " _sqliteScalar node\fallback output]
             return append result " END"
         ]
         "wildcard" -> return "*"
@@ -278,10 +296,11 @@ _sqlRender: $[node output] [
         ]
         "identifier" -> return _sqlQuote node\value
         "value" [
-            ; SQLite binds booleans as integers; Arturo otherwise binds them as text.
+            ; Normalize booleans; preserve NULL even on runtimes that bind every value as text.
             value: node\value
             if :logical = type value -> value: value ? [1] [0]
             output\params: append output\params value
+            if null? value -> return "NULLIF(?, 'null')"
             return "?"
         ]
         "null" [
@@ -291,7 +310,7 @@ _sqlRender: $[node output] [
         ]
         "comparison" [
             return join @[
-                _sqlRender node\left output " " node\operator " " _sqlRender node\right output
+                _sqliteComparable node\left node\right output " " node\operator " " _sqliteComparable node\right node\left output
             ]
         ]
         "boolean" [

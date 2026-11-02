@@ -12,7 +12,7 @@ describe "Composed scalar expressions" [
             select coalesce [[nullif subtitle ""] title]
         ]
         expects.be: 'equal? @[compiled\params ["" "River%" 0 10 0 400]]
-        expects.be: 'equal? @[contains? compiled\text {NULLIF("pages", ?) > COALESCE("minimumPages", ?)} true]
+        expects.be: 'equal? @[contains? compiled\text {NULLIF("pages", CAST(? AS INTEGER)) > COALESCE("minimumPages", CAST(? AS INTEGER))} true]
         expects.be: 'equal? @[contains? compiled\text {COALESCE("subtitle", "title") IS NOT NULL} true]
     ]
 
@@ -25,8 +25,8 @@ describe "Composed scalar expressions" [
             where [5 < pages - 1]
         ]
         expects.be: 'equal? @[compiled\params [2 2 3 10 2 3 100 5 1]]
-        expects.be: 'equal? @[contains? compiled\text {("pages" + (? * ?)) > ?} true]
-        expects.be: 'equal? @[contains? compiled\text {(("pages" + ?) * ?) <= ?} true]
+        expects.be: 'equal? @[contains? compiled\text {("pages" + (? * ?)) > CAST(? AS INTEGER)} true]
+        expects.be: 'equal? @[contains? compiled\text {(("pages" + ?) * ?) <= CAST(? AS INTEGER)} true]
     ]
 
     it "rejects incomplete or adjacent scalar expressions" [

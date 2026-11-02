@@ -70,7 +70,7 @@ describe "Function API" [
         expects.be: 'equal? @[contains? compiled\text {GROUP BY
     "genre"
 HAVING
-    COUNT(*) > ?} true]
+    COUNT(*) > CAST(? AS INTEGER)} true]
     ]
 
     it "compiles CTE and nested query parameters in textual order" [
