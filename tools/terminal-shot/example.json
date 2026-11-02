@@ -1,0 +1,32 @@
+{
+  "title": "sql / examples — À la Arturo",
+  "width": 947,
+  "fontSize": 20,
+  "lineHeight": 27,
+  "padding": 40,
+  "lines": [
+    [{"text": "% ", "color": "green"}, {"text": "cat languages.art"}],
+    [{"text": "import ", "color": "cyan"}, {"text": "./{data/languages}!"}],
+    "",
+    [{"text": "print ", "color": "cyan"}, {"text": "tabular"}],
+    [{"text": "    .header: ", "color": "lime"}, {"text": "[\"Language\" \"Since\" \"Typing\"]", "color": "yellow"}],
+    [{"text": "    .padding: ", "color": "lime"}, {"text": "8"}],
+    [{"text": "    sql.query: ", "color": "cyan"}, {"text": "db ["}],
+    [{"text": "        from ", "color": "cyan"}, {"text": ":languages", "color": "purple"}],
+    [{"text": "        select ", "color": "cyan"}, {"text": "[name year typing]"}],
+    [{"text": "        where ", "color": "cyan"}, {"text": "[year "}, {"text": ">=", "color": "pink"}, {"text": " 2000]"}],
+    [{"text": "        order.desc ", "color": "cyan"}, {"text": "'year", "color": "purple"}],
+    "    ]",
+    "",
+    [{"text": "close ", "color": "cyan"}, {"text": "db"}],
+    "",
+    [{"text": "% ", "color": "green"}, {"text": "arturo languages.art"}],
+    "+------------------------+---------------------+-----------------------+",
+    "|        Language        |        Since        |        Typing         |",
+    "+------------------------+---------------------+-----------------------+",
+    "|        Arturo          |        2019         |        Dynamic        |",
+    "|        Rust            |        2010         |        Static         |",
+    "|        Go              |        2009         |        Static         |",
+    "+------------------------+---------------------+-----------------------+"
+  ]
+}
