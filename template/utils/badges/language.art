@@ -1,0 +1,19 @@
+import ./{base}!
+
+language: $[][
+    image: to :HtmlImage #[
+        source: "https://img.shields.io/badge/language-Arturo-6A156B.svg?" 
+        description: "Language: Arturo"
+    ]!
+
+    badge: to :Badge #[
+        url: "https://www.arturo-lang.io" 
+        image: image
+    ]!
+
+    to :string badge
+]
+
+if standalone? ::
+    print to :string language
+

@@ -1,0 +1,9 @@
+
+
+library?: $[x :string][
+    in? x ["lib" "library" "both" "full" "complete"]
+]
+
+executable?: $[x :string][
+    in? x ["exe" "executable" "bin" "binary" "both" "full" "complete"]
+]

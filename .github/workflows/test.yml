@@ -1,0 +1,82 @@
+name: "CI"
+on:
+    push:
+        branches:
+        - main
+    pull_request:
+        types: [opened, synchronize]
+    workflow_dispatch:
+
+concurrency: 
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:  
+    build:
+        name: "Test"
+        runs-on: ${{ 
+            (matrix.os == 'linux')   && (matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest') ||
+            (matrix.os == 'macos')   && (matrix.arch == 'arm64' && 'macos-latest' || 'macOS-15-intel') ||
+            (matrix.os == 'windows') && 'windows-latest' || 
+                                        'ubuntu-latest'  }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include: 
+                    - {os: linux,   arch: amd64}
+                    - {os: linux,   arch: arm64}
+                    - {os: freebsd, arch: amd64}
+                    - {os: macos,   arch: amd64}
+                    - {os: macos,   arch: arm64}
+                    - {os: windows, arch: amd64}
+                    
+        defaults:
+            run:
+                shell: ${{ 
+                    (matrix.os == 'freebsd') && 'freebsd {0}' ||
+                    (matrix.os == 'windows') && 'msys2 {0}'   || 
+                                                'bash'        }}
+
+        steps:
+            # We have to checkout first, *before* setting up Arturo,
+            # if we want to be able to access the files from inside
+            # including FreeBSD jobs!
+            - name: "Checkout sources"
+              uses: actions/checkout@v4
+              with:
+                submodules: recursive
+
+            - name: Setup Arturo
+              uses: arturo-lang/setup-arturo@v2
+              with: 
+                token: ${{ secrets.GITHUB_TOKEN }}
+                os: ${{ matrix.os }}
+                arch: ${{ matrix.arch }}
+
+            - name: "Add Arturo packages to PATH"
+              run: |
+                echo "${HOME}/.arturo/packages/bin" >> $GITHUB_PATH
+            
+            - name: Install `unitt`
+              run: |
+                # Ensure workspace and install package for all OSes
+                cd $GITHUB_WORKSPACE
+                arturo -p install unitt
+
+            - name: Test Package (Windows)
+              if: ${{ matrix.os == 'windows' }}
+              run: |
+                cmd.exe /C unitt.bat
+
+            - name: Test Package (FreeBSD)
+              if: ${{ matrix.os == 'freebsd' }}
+              run: |
+                # FreeBSD jobs need the package binary path directly
+                cd $GITHUB_WORKSPACE
+                "${HOME}/.arturo/packages/bin/unitt"
+
+            - name: Test Package (Linux & MacOS)
+              if: ${{ matrix.os != 'windows' && matrix.os != 'freebsd' }}
+              run: |
+                cd $GITHUB_WORKSPACE
+                unitt

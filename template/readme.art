@@ -1,0 +1,53 @@
+import ./{utils/badges}!
+import ./{utils/meta}!
+import ./{utils/sections/body}!
+import ./{utils/sections/heading}!
+
+heading: $[repository :Repository package :Package][
+    badges: join.lines @[
+        {<p align="center">}
+        indent badge :language repository
+        indent "&nbsp;"
+        indent badge :license repository
+        indent "&nbsp;"
+        indent badge :ci repository
+        {</p>}
+    ]
+
+    join.with: "\n\n" @[
+        title package\name
+        description package\description
+        badges
+    ]
+]
+
+body: $[package :Package imageFile :string][
+
+    join.with: "\n\n" @[
+        "## At a Glance"
+        showcase imageFile
+        
+        "## Installation"
+        shell ~"arturo -p install |package\name|"
+        "or"
+        example ~"import {|package\name|}!"
+
+        "## Documentation"
+        ""
+    ]
+]
+
+readme: $[repository :Repository package :Package imageFile :string][
+    join.with: "\n\n" @[
+        heading repository package
+        body package imageFile
+    ]
+]
+
+if standalone? ::
+
+    repository: to :Repository #[owner: "RickBarretto" name: "unitt"]!
+    package: to :Package #[name: "unitt" description: "A unit testing framework for Arturo"]!
+
+    print readme repository package "showcase.png"
+    print readme repository package ""

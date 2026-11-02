@@ -1,0 +1,47 @@
+define :HtmlImage [
+    init: constructor [source :string description :string]
+
+    string: method [][
+        source: append this\source "&style=flat&colorA=000000&colorB=000000" 
+        src: ~{src="|source|"}
+        alt: ~{alt="|this\description|"}
+
+        join @["<img " src " " alt "/>"]
+    ]
+]
+
+define :HtmlLink [
+    init: constructor [url :string content :any]
+
+    string: method [][
+        href: ~{href="|this\url|"}
+        content: to :string this\content
+        join @["<a " href ">" content "</a>"]
+    ]
+
+]
+
+define :Badge [
+    init: constructor [url :string image :HtmlImage]
+
+    string: method [][
+        url: this\url
+        img: this\image
+        link: to :HtmlLink #[url: url content: img]!
+        to :string link
+    ]
+]
+
+if standalone? ::
+
+    image: to :HtmlImage #[
+        source: "https://img.shields.io/badge/example-blue" 
+        description: "Example"
+    ]!
+
+    badge: to :Badge #[
+        url: "https://example.com" 
+        image: image
+    ]!
+
+    print to :string badge 

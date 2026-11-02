@@ -1,0 +1,55 @@
+import ./{base}!
+
+define :CiBadge [
+    init: constructor [
+        builder :type
+        owner :string
+        repository :string
+        branch :string
+    ]
+
+    image: method [][
+        src: "https://img.shields.io/github/actions/workflow/status/{{owner}}/{{repository}}/test.yml?branch={{branch}}"
+            | replace "{{owner}}" this\owner
+            | replace "{{repository}}" this\repository
+            | replace "{{branch}}" this\branch
+
+        to :HtmlImage #[
+            source: src
+            description: "CI Status"
+        ]!
+    ]
+
+    string: method [][
+        builder: this\builder
+        url: "https://github.com/{{owner}}/{{repository}}/actions"
+            | replace "{{owner}}" this\owner
+            | replace "{{repository}}" this\repository
+
+        image: this\image
+        badge: to builder #[
+            url: url
+            image: image
+        ]!
+
+        to :string badge
+    ]
+]
+
+githubCi: $[owner :string repository :string][
+    branch: (attr 'branch) ?? "main"
+
+    badge: to :CiBadge #[
+        builder: :Badge
+        owner: owner
+        repository: repository
+        branch: branch
+    ]!
+
+    to :string badge
+]
+
+if standalone? ::
+
+    inspect githubCi "RickBarretto" "unitt"
+    inspect githubCi.branch: "master" "RickBarretto" "unitt"

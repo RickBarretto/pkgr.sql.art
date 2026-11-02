@@ -1,0 +1,44 @@
+
+title: $[package :string][
+    join @[{<h1 align="center">} package {</h1>}]
+]
+
+icon: $[source :string description :string][
+    src: join @["src=" source]
+    alt: join @["alt=" description]
+    width: "width=20"
+
+    case attr 'mode [
+        'light -> append 'src "#gh-light-mode-only"
+        'dark -> append 'src "#gh-dark-mode-only"
+    ]
+
+    join.lines @[
+        "<img"
+        indent src
+        indent alt
+        indent width
+        "/>"
+    ]
+]
+
+description: $[text :string][
+    italic: join @["<i>" text "</i>"]
+    join.lines @[
+        "<p align=\"center\">"
+        indent italic
+        indent "<br><br><br>"
+        indent icon.mode: 'light "./docs/icons/arturo-light-mode.png" "Arturo logo"
+        indent icon.mode: 'dark "./docs/icons/arturo-dark-mode.png" "Arturo logo"
+        indent "<br>"
+        indent "<b>~ CODE IS ART ~</b>"
+        indent "<br><br>"
+        "</p>"
+    ]
+]
+
+
+if standalone? ::
+
+    print title "Arturo Template"
+    print description "Welcome to the Arturo template repository!"
