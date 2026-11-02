@@ -1,0 +1,14 @@
+import relative "../src/lib.art"!
+
+minimumAge: 18
+statement: sql [
+    select [id name email]
+    from users
+    where [age >= (minimumAge) and active = true]
+    orderBy [name asc]
+    limit 20
+]
+
+compiled: to :sqliteQuery statement
+print compiled\text
+inspect compiled\params

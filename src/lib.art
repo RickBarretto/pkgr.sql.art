@@ -1,4 +1,236 @@
+; SQL blocks are parsed as data; only parenthesized expressions execute.
+_sqlFail: $[message] -> throw message
 
-double: $[x][
-    mul x 2
+_sqlText: $[value] -> to :string value
+
+_sqlIdentifier: $[value] -> #[kind: "identifier" value: to :string value]
+
+_sqlValue: $[value] [
+    if :inline = type value [
+        results: @[do to :block value]
+        if 1 <> size results [_sqlFail "SQL expression must return one value"]
+        value: first results
+    ]
+    if contains? [:integer :floating :string :logical] type value [return #[kind: "value" value: value]]
+    _sqlFail "SQL requires a scalar value"
+]
+
+_sqlOperand: $[token] [
+    if :word = type token [
+        spelling: to :string token
+        if spelling = "true" [return _sqlValue true]
+        if spelling = "false" [return _sqlValue false]
+        if spelling = "null" [_sqlFail "Use is null or is not null"]
+        return _sqlIdentifier token
+    ]
+    _sqlValue token
+]
+
+_sqlPeek: $[state] [
+    if state\position >= size state\tokens [return ""]
+    to :string get state\tokens state\position
+]
+
+_sqlTake: $[state] [
+    if state\position >= size state\tokens [_sqlFail "Unexpected end of SQL block"]
+    token: get state\tokens state\position
+    state\position: state\position + 1
+    token
+]
+
+_sqlAtom: $[state] [
+    token: _sqlTake state
+    if :block = type token [return _sqlPredicate token]
+    left: _sqlOperand token
+    operator: _sqlText _sqlTake state
+    if operator = "!" [
+        if "=" <> _sqlText _sqlTake state [_sqlFail "Expected = after !"]
+        operator: "<>"
+    ]
+    if operator = "is" [
+        negate: false
+        if "not" = _sqlPeek state [
+            ignored: _sqlTake state
+            negate: true
+        ]
+        if "null" <> _sqlText _sqlTake state [_sqlFail "Expected null after is"]
+        return #[kind: "null" left: left negate: negate]
+    ]
+    unless contains? ["=" "<>" "!=" "<" "<=" ">" ">="] operator [_sqlFail "Unsupported SQL comparison"]
+    if operator = "!=" [operator: "<>"]
+    right: _sqlOperand _sqlTake state
+    #[kind: "comparison" left: left operator: operator right: right]
+]
+
+_sqlAnd: $[state] [
+    node: _sqlAtom state
+    while ["and" = _sqlPeek state] [
+        ignored: _sqlTake state
+        node: #[kind: "boolean" operator: "AND" left: node right: _sqlAtom state]
+    ]
+    node
+]
+
+_sqlPredicate: $[tokens] [
+    state: #[tokens: tokens position: 0]
+    node: _sqlAnd state
+    while ["or" = _sqlPeek state] [
+        ignored: _sqlTake state
+        node: #[kind: "boolean" operator: "OR" left: node right: _sqlAnd state]
+    ]
+    if state\position <> size tokens [_sqlFail "Unexpected predicate token"]
+    node
+]
+
+sql: $[_sqlInput] [
+    _sqlState: #[tokens: _sqlInput position: 0]
+    _sqlQuery: #[
+        kind: "select"
+        columns: []
+        table: ""
+        predicates: []
+        ordering: []
+        limit: null
+        offset: null
+    ]
+    if "select" <> _sqlText _sqlTake _sqlState [_sqlFail "Expected select"]
+    _sqlColumns: _sqlTake _sqlState
+    unless :block = type _sqlColumns [_sqlFail "Expected column block"]
+    if empty? _sqlColumns [_sqlFail "Select requires columns"]
+    loop _sqlColumns '_sqlColumn [
+        unless or? :word = type _sqlColumn "*" = to :string _sqlColumn [_sqlFail "Invalid column"]
+        _sqlQuery\columns: append _sqlQuery\columns to :string _sqlColumn
+    ]
+    if "from" <> _sqlText _sqlTake _sqlState [_sqlFail "Expected from"]
+    _sqlTable: _sqlTake _sqlState
+    unless :word = type _sqlTable [_sqlFail "Expected table identifier"]
+    _sqlQuery\table: to :string _sqlTable
+    _sqlStage: 0
+    while [_sqlState\position < size _sqlInput] [
+        _sqlClause: _sqlText _sqlTake _sqlState
+        case _sqlClause [
+            "where" [
+                if _sqlStage > 0 [_sqlFail "where must precede ordering and pagination"]
+                _sqlQuery\predicates: append _sqlQuery\predicates _sqlPredicate _sqlTake _sqlState
+            ]
+            "orderBy" [
+                if _sqlStage > 0 [_sqlFail "Duplicate or misplaced orderBy"]
+                _sqlStage: 1
+                _sqlOrderTokens: _sqlTake _sqlState
+                unless :block = type _sqlOrderTokens [_sqlFail "Expected ordering block"]
+                if empty? _sqlOrderTokens [_sqlFail "Empty ordering block"]
+                _sqlOrder: #[tokens: _sqlOrderTokens position: 0]
+                while [_sqlOrder\position < size _sqlOrder\tokens] [
+                    _sqlName: _sqlTake _sqlOrder
+                    unless :word = type _sqlName [_sqlFail "Expected ordering column"]
+                    _sqlDirection: "asc"
+                    if contains? ["asc" "desc"] _sqlPeek _sqlOrder [
+                        _sqlDirection: _sqlText _sqlTake _sqlOrder
+                    ]
+                    _sqlQuery\ordering: append _sqlQuery\ordering #[
+                        column: to :string _sqlName
+                        direction: _sqlDirection
+                    ]
+                ]
+            ]
+            "limit" [
+                if _sqlStage > 1 [_sqlFail "Duplicate or misplaced limit"]
+                _sqlStage: 2
+                _sqlQuery\limit: get _sqlValue _sqlTake _sqlState 'value
+            ]
+            "offset" [
+                if _sqlStage <> 2 [_sqlFail "offset requires limit"]
+                _sqlStage: 3
+                _sqlQuery\offset: get _sqlValue _sqlTake _sqlState 'value
+            ]
+            any [_sqlFail "Unknown SQL clause"]
+        ]
+    ]
+    loop @[_sqlQuery\limit _sqlQuery\offset] '_sqlPage [
+        unless null? _sqlPage [
+            unless :integer = type _sqlPage [_sqlFail "Pagination requires integers"]
+            if _sqlPage < 0 [_sqlFail "Pagination cannot be negative"]
+        ]
+    ]
+    _sqlQuery
+]
+
+_sqlQuote: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
+
+_sqlRender: $[node output] [
+    case node\kind [
+        "identifier" [return _sqlQuote node\value]
+        "value" [
+            output\params: append output\params node\value
+            return "?"
+        ]
+        "null" [
+            return join @[
+                _sqlRender node\left output " IS " node\negate ? ["NOT NULL"] ["NULL"]
+            ]
+        ]
+        "comparison" [
+            return join @[
+                _sqlRender node\left output " " node\operator " " _sqlRender node\right output
+            ]
+        ]
+        "boolean" [
+            return join @[
+                "(" _sqlRender node\left output " " node\operator " " _sqlRender node\right output ")"
+            ]
+        ]
+        any [_sqlFail "Invalid SQL expression node"]
+    ]
+]
+
+_sqlCompile: $[data] [
+    unless :dictionary = type data [_sqlFail "Expected SQL query dictionary"]
+    loop [kind columns table predicates ordering limit offset] 'field [
+        unless key? data field [_sqlFail "Incomplete SQL query dictionary"]
+    ]
+    unless data\kind = "select" [_sqlFail "Expected select query"]
+    output: #[text: "" params: []]
+    columns: map data\columns 'column [
+        (column = "*") ? ["*"] [_sqlQuote column]
+    ]
+    output\text: join @[
+        "SELECT\n    " join.with:",\n    " columns
+        "\nFROM\n    " _sqlQuote data\table
+    ]
+    filters: map data\predicates 'predicate [_sqlRender predicate output]
+    unless empty? filters [
+        output\text: join @[output\text "\nWHERE\n    " join.with:"\n    AND " filters]
+    ]
+    orders: map data\ordering 'order [
+        join @[_sqlQuote order\column " " upper order\direction]
+    ]
+    unless empty? orders [
+        output\text: join @[output\text "\nORDER BY\n    " join.with:",\n    " orders]
+    ]
+    unless null? data\limit [
+        output\text: append output\text "\nLIMIT\n    ?"
+        output\params: append output\params data\limit
+    ]
+    unless null? data\offset [
+        output\text: append output\text "\nOFFSET\n    ?"
+        output\params: append output\params data\offset
+    ]
+    output
+]
+
+; Dictionary conversion matches constructor arguments by field name.
+define :sqliteQuery [
+    init: method [kind columns table predicates ordering limit offset] [
+        compiled: _sqlCompile #[
+            kind: kind
+            columns: columns
+            table: table
+            predicates: predicates
+            ordering: ordering
+            limit: limit
+            offset: offset
+        ]
+        this\text: compiled\text
+        this\params: compiled\params
+    ]
 ]
