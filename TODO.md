@@ -5,7 +5,8 @@ Reference: [API contracts](api/API.md), [writing guide](api/STYLE.md), and the l
 A checked feature has implementation and regression coverage. An unchecked feature
 still needs the work described. Features marked **dialect pending** can be built
 as query data, but conversion to SQLite rejects them explicitly; they are not
-implemented for execution. This checklist does not promise another SQL dialect.
+implemented for execution. PostgreSQL and MySQL plans below are proposals awaiting
+syntax decisions; they do not indicate implemented support.
 
 ## Construction and scope
 
@@ -123,11 +124,11 @@ implemented for execution. This checklist does not promise another SQL dialect.
 - [x] Update API documentation and runnable examples for this round's completed behavior.
 - [x] Run Unitt and all examples sequentially, inspect results, and commit this round's changes.
 
-## Current round
+## Completed implementation round
 
-The active implementation scope is expression composition, reference-scope validation,
-set-operand isolation, catalog checks, documentation and verification. Dialect-pending
-items remain unchecked until a supported compilation/execution strategy is implemented.
+Expression composition, reference-scope validation, set-operand isolation, catalog
+checks, documentation and verification are complete. Dialect-pending items remain
+unchecked until a supported compilation/execution strategy is implemented.
 
 
 ### Verification and commits
@@ -135,3 +136,126 @@ items remain unchecked until a supported compilation/execution strategy is imple
 - `84f45db`: expression composition, relation scopes, set-operand isolation and catalog checks.
 - `ab3a51b`: scoped SQLite scalar adapters; preserve native functions after success and errors.
 - Final verification: 404 Unitt assertions pass; every runnable example and `src/main.art` pass, executed sequentially. The API example is included in CI.
+
+## PostgreSQL and MySQL compilation proposal
+
+Status: planning only. No PostgreSQL or MySQL compiler or execution adapter has
+been implemented. Public syntax, type names and translation policies remain
+undecided. The names below are candidate spellings, not approved API contracts.
+Implementation and issue creation are deferred until the syntax is defined.
+
+
+- [ ] Add compilation-only `:postgresQuery` and `:mysqlQuery` types with `text` and `params`.
+- [ ] Scope dialect helpers locally and preserve SQLite/native functions across success and errors.
+- [ ] Emit PostgreSQL quoted identifiers, numbered placeholders, native scalar parameters, FETCH, grouping extensions, ALL/ANY, identity and TRUNCATE.
+- [ ] Emit MySQL quoted identifiers, positional placeholders, LIMIT pagination, rollups, ALL/ANY, AUTO_INCREMENT and TRUNCATE; reject unsupported combinations.
+- [ ] Generate each dialect's schema, views and trigger syntax.
+- [ ] Test nested parameter ordering, catalog compilation, dialect boundaries and immutable input without requiring database drivers.
+- [ ] Document dialect support and compilation-only usage, run checks sequentially, and commit each verified step.
+
+### Full feature matrix
+
+SQLite describes the current implementation. PostgreSQL and MySQL 8.4 describe
+proposed compilation targets and database capabilities, not completed package
+support. “Translate” is a proposal that still needs a syntax/policy decision.
+
+| API feature | SQLite: current | PostgreSQL: proposed | MySQL 8.4: proposed |
+| --- | --- | --- | --- |
+| `select`, appended projections, `.as:` | Supported | Supported | Supported |
+| `select.distinct` | Supported | Supported | Supported |
+| `from`, table aliases | Supported | Supported | Supported |
+| `where`, repeated filters | Supported | Supported | Supported |
+| Comparisons, `and`, `or`, `not` | Supported | Supported | Supported |
+| `between`, `in`, `like` | Supported | Supported | Supported |
+| `is null`, `is not null` | Supported | Supported | Supported |
+| Arithmetic and nested scalar expressions | Supported | Supported | Supported |
+| INNER JOIN | Supported | Supported | Supported |
+| LEFT JOIN | Supported | Supported | Supported |
+| RIGHT JOIN | SQLite version dependent | Supported | Supported |
+| FULL JOIN | SQLite version dependent | Supported | Unsupported natively |
+| CROSS JOIN and self joins | Supported | Supported | Supported |
+| `order.asc`, `order.desc` | Supported | Supported | Supported |
+| `limit`, `.skip:`, `offset` | Supported | Supported | Supported |
+| `fetch` | Rejected | Native FETCH | Proposed translation to LIMIT/OFFSET |
+| `group` | Supported | Supported | Supported |
+| `having` | Supported | Supported | Supported |
+| `group.rollup` | Rejected | Native ROLLUP | WITH ROLLUP |
+| `group.cube` | Rejected | Native CUBE | Unsupported natively |
+| `group.sets` | Rejected | Native GROUPING SETS | Unsupported natively |
+| `count`, `sum`, `avg`, `min`, `max` | Supported | Supported | Supported |
+| `choose`, `when`, `otherwise`, `.default:` | Supported | Supported | Supported |
+| `coalesce`, `nullif` | Supported | Supported | Supported |
+| Scalar and correlated subqueries | Supported | Supported | Supported |
+| `exists` | Supported | Supported | Supported |
+| `all`, `any` | Rejected | Supported | Supported, with subquery restrictions |
+| `with` CTEs | Supported | Supported | Supported |
+| UNION, INTERSECT, EXCEPT | Supported | Supported | Supported |
+| `create`, `column` | Supported | Supported | Supported |
+| Required and optional columns | Supported | Supported | Supported |
+| `.primary`, `.unique` | Supported | Supported | Subject to index/type restrictions |
+| `reference` foreign keys | Supported | Supported | Subject to engine/index restrictions |
+| `check` | Supported | Supported | Supported |
+| `.identity` | Rejected | GENERATED ALWAYS AS IDENTITY | AUTO_INCREMENT; requires an indexed key |
+| `alter`, `add`, `remove`, `rename` | Supported, SQLite restrictions | Supported | Supported |
+| `drop` | Supported | Supported | Supported |
+| `insert`, `columns`, `row` | Supported | Supported | Supported |
+| `update`, `assign`, `.values:` | Supported | Supported | Supported |
+| `delete` | Supported | Supported | Supported |
+| `truncate` | Rejected | Native TRUNCATE | Native TRUNCATE |
+| `create.view`, `drop.view` | Supported | Supported | Supported |
+| `create.trigger` | Supported | Requires a trigger function | Requires FOR EACH ROW trigger syntax |
+
+### Candidate compiler interfaces
+
+These spellings must be reviewed alongside the future syntax design.
+
+| Detail | SQLite: implemented | PostgreSQL: candidate | MySQL: candidate |
+| --- | --- | --- | --- |
+| Query type | `:sqliteQuery` | `:postgresQuery` | `:mysqlQuery` |
+| Output fields | `text`, `params` | `text`, `params` | `text`, `params` |
+| Identifier quoting | `"name"` | `"name"` | `` `name` `` |
+| Parameter placeholders | `?` | `$1`, `$2`, ... | `?` |
+| Arturo execution adapter | `sqliteExecute`, `sqliteTable` | Separate future work | Separate future work |
+
+SQL generation can be implemented without a native Arturo database driver.
+Execution, connections and driver integration are separate work items. Server
+execution tests are distinct from compiler tests and must not be claimed until run.
+
+### Decisions to make before implementation or issue creation
+
+- [ ] Define how callers select a dialect and name the compiled query types.
+- [ ] Decide whether unsupported features produce errors or use documented translations/emulation.
+- [ ] Decide whether MySQL `fetch` translates to LIMIT/OFFSET or is rejected.
+- [ ] Define identity behavior: PostgreSQL ALWAYS versus BY DEFAULT, MySQL AUTO_INCREMENT indexing requirements, and any SQLite mapping.
+- [ ] Define per-dialect storage types, string lengths and indexable string constraints.
+- [ ] Define boolean/null parameter handling and placeholder conventions for external drivers.
+- [ ] Define how PostgreSQL trigger functions are named, emitted and managed alongside triggers.
+- [ ] Define whether generated output may contain multiple statements and how callers consume them.
+- [ ] Define MySQL version requirements and diagnostics for unsupported joins, grouping extensions and restricted quantified subqueries.
+- [ ] Define the validation/test strategy, including optional database-backed execution checks.
+- [ ] After syntax decisions, create tracking issues from the agreed scope. No issues have been opened yet.
+
+### Candidate issue breakdown for later
+
+1. Dialect selection and compiled-query interface.
+2. Scoped compiler infrastructure, identifier quoting and parameter numbering.
+3. PostgreSQL query features: pagination, grouping extensions and quantified comparisons.
+4. PostgreSQL schema, identity columns, views and triggers.
+5. MySQL query features, syntax translations and unsupported-feature diagnostics.
+6. MySQL schema, AUTO_INCREMENT, views and triggers.
+7. Cross-dialect catalog tests, parameter-order tests and native-function preservation.
+8. Documentation, support matrix and runnable compilation examples.
+9. Optional PostgreSQL/MySQL driver integration and server execution tests.
+
+### Reference documentation
+
+- [PostgreSQL SELECT, pagination and grouping](https://www.postgresql.org/docs/current/sql-select.html).
+- [PostgreSQL quantified subqueries](https://www.postgresql.org/docs/current/functions-subquery.html).
+- [PostgreSQL identity columns](https://www.postgresql.org/docs/current/ddl-identity-columns.html).
+- [PostgreSQL TRUNCATE](https://www.postgresql.org/docs/current/sql-truncate.html).
+- [PostgreSQL triggers](https://www.postgresql.org/docs/current/sql-createtrigger.html).
+- [MySQL 8.4 SELECT](https://dev.mysql.com/doc/refman/8.4/en/select.html).
+- [MySQL 8.4 rollups](https://dev.mysql.com/doc/refman/8.4/en/group-by-modifiers.html).
+- [MySQL 8.4 subqueries](https://dev.mysql.com/doc/refman/8.4/en/subqueries.html).
+- [MySQL 8.4 AUTO_INCREMENT](https://dev.mysql.com/doc/refman/8.4/en/example-auto-increment.html).
+- [MySQL 8.4 TRUNCATE](https://dev.mysql.com/doc/refman/8.4/en/truncate-table.html).
