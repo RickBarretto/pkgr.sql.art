@@ -1,6 +1,34 @@
 import {unitt}!
 import {src/lib.art}!
 
+describe "Terminal query tables" [
+    it "renders dictionaries, compiled queries, wildcard columns and empty results" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            query db "CREATE TABLE users (id INTEGER, name TEXT)"
+            query db {INSERT INTO users VALUES (1, 'Ada')}
+            statement: sql [select [*] from users]
+            expected: join.with:"\n" [
+                "+----+------+"
+                "| ID | Name |"
+                "+----+------+"
+                "| 1  | Ada  |"
+                "+----+------+"
+                ""
+            ]
+            expects.be: 'equal? @[sqliteTable.header: ["ID" "Name"] db statement expected]
+            expects.be: 'equal? @[sqliteTable.header: ["ID" "Name"] db to :sqliteQuery statement expected]
+            expects.be: 'equal? @[sqliteTable db statement tabular [["1" "Ada"]]]
+            expects.be: 'equal? @[sqliteTable db sql [select [id] from users where [id = 2]] "No rows."]
+            invalidHeader: try [ignored: sqliteTable.header: ["ID"] db statement]
+            expects.be: 'equal? @[type invalidHeader :error]
+            expects.be: 'equal? @[query db "SELECT 1" [["1"]]]
+        ]
+        close db
+        unless null? failure [throw to :string failure]
+    ]
+]
+
 describe "SQL builder" [
     it "compiles dynamic predicates and pagination" [
         minimumAge: 18

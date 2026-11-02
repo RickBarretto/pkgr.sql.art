@@ -1,3 +1,5 @@
+import {tabular}!
+
 ; SQL blocks are parsed as data; only parenthesized expressions execute.
 _sqlFail: $[message] -> throw message
 
@@ -243,4 +245,20 @@ sqliteExecute: $[db :database statement] [
     if :dictionary = type statement [statement: to :sqliteQuery statement]
     unless :sqliteQuery = type statement [_sqlFail "Expected SQL query dictionary or sqliteQuery"]
     query.with: statement\params db statement\text
+]
+
+; Return terminal-ready text; keep execution results available via sqliteExecute.
+sqliteTable: function [db :database statement] [
+    ;; options: [
+    ;;     header: :block « optional column labels
+    ;; ]
+    headers: attr 'header
+    rows: sqliteExecute db statement
+    ; Tabular 0.2.0 requires at least one row to calculate column widths.
+    if empty? rows [return "No rows."]
+    unless null? headers [
+        if (size headers) <> size first rows [_sqlFail "Header count must match query columns"]
+        return tabular.header: headers rows
+    ]
+    tabular rows
 ]

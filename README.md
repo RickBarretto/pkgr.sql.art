@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-    <a href="https://www.arturo-lang.io"><img src="https://img.shields.io/badge/language-Arturo-6A156B.svg?&style=flat&colorA=000000&colorB=000000" alt="Language: Arturo"/></a>
+    <a href="https://www.arturo-lang.io"><img src="https://img.shields.io/badge/language-Arturo-6A156B.svg?&style=flat&colorA=000000&colorB=000000" alt="Langukvage: Arturo"/></a>
     &nbsp;
     <a href="https://github.com/RickBarretto/pkgr.sql.art/blob/main/LICENSE"><img src="https://img.shields.io/github/license/RickBarretto/pkgr.sql.art?&style=flat&colorA=000000&colorB=000000" alt="License"/></a>
     &nbsp;
@@ -97,6 +97,21 @@ Arturo 0.10.0), and database errors propagate to the caller.
 query dictionary or a compiled `:sqliteQuery` and calling the same built-in API.
 The caller opens and closes the connection. No external SQLite package is
 required. See `examples/sqlite.art` for a runnable example.
+
+### Terminal tables
+
+Use `sqliteTable` to execute a query and format its results with the `tabular`
+package (installed as a dependency). Print the returned string in the terminal:
+
+```art
+print sqliteTable.header: ["ID" "Name" "Email"] db statement
+```
+
+Both query dictionaries and compiled `:sqliteQuery` objects are accepted.
+The optional `.header:` labels must match the number of result columns; omit
+them for a table without a header, including with `select [*]`. Empty results
+return `"No rows."`. The caller still owns and closes the database connection.
+Run `arturo examples/sqlite.art` for a complete terminal example.
 
 Use `statement` rather than `query` as a variable when using the database API:
 Arturo already defines a function named `query`.

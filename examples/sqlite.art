@@ -13,7 +13,8 @@ failure: try [
         orderBy [name]
     ]
     compiled: to :sqliteQuery statement
-    inspect query.with: compiled\params db compiled\text
+    print sqliteTable.header: ["ID" "Name"] db compiled
 ]
+
 close db
 unless null? failure [throw to :string failure]
