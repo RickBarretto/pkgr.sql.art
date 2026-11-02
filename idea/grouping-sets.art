@@ -1,0 +1,18 @@
+sql [
+    select.expressions [genre publisherId [count [*]]]
+    from :books
+    groupBy.sets [[genre] [publisherId] []]
+]
+
+sql [
+    select.expressions [genre publisherId [count [*]]]
+    from :books
+    group.sets [[genre] [publisherId] []]
+]
+
+---
+SELECT genre,
+    publisherId,
+    COUNT(*)
+FROM books
+GROUP BY GROUPING SETS ( (genre),  (publisherId),  ());

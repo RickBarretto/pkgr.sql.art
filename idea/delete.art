@@ -1,0 +1,8 @@
+sql [deleteFrom :books where -> id = 7]
+
+sql [delete.from :books where -> id = 7]
+
+---
+DELETE
+FROM books
+WHERE id = 7;

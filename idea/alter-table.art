@@ -1,0 +1,12 @@
+sql [
+    alter.table :books
+    rename :catalogBooks
+]
+
+sql [
+    table.alter :books
+    rename :catalogBooks
+]
+
+---
+ALTER TABLE books RENAME TO catalogBooks;

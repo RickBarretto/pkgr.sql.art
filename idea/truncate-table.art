@@ -1,0 +1,10 @@
+sql [
+    truncate.table :loanImports
+]
+
+sql [
+    table.truncate :loanImports
+]
+
+---
+TRUNCATE TABLE loanImports;

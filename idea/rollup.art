@@ -1,0 +1,18 @@
+sql [
+    select.expressions [genre publisherId [count *]]
+    from :books
+    groupBy.rollup [genre publisherId]
+]
+
+sql [
+    select.expressions [genre publisherId [count *]]
+    from :books
+    group.rollup [genre publisherId]
+]
+
+---
+SELECT genre,
+    publisherId,
+    COUNT(*)
+FROM books
+GROUP BY ROLLUP (genre, publisherId);

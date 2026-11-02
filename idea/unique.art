@@ -1,0 +1,12 @@
+sql [
+    create.table :books
+    column.unique catalogCode :string
+]
+
+sql [
+    table.create :books
+    column.unique catalogCode :string
+]
+
+---
+CREATE TABLE books (catalogCode TEXT UNIQUE);

@@ -1,0 +1,27 @@
+sql [
+    select [title publishedYear]
+    from :books
+    orderBy title
+]
+sql [
+    select [title publishedYear]
+    from :books
+    orderBy [publishedYear desc title asc]
+]
+
+sql [
+    select [title publishedYear]
+    from :books
+    order.by title
+]
+
+---
+SELECT title,
+    publishedYear
+FROM books
+ORDER BY title ASC;
+SELECT title,
+    publishedYear
+FROM books
+ORDER BY publishedYear DESC,
+    title ASC;

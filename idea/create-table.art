@@ -1,0 +1,14 @@
+sql [
+    create.table :books
+    column id :integer
+    column.notNull title :string
+]
+
+sql [
+    table.create :books
+    column id :integer
+    column.notNull title :string
+]
+
+---
+CREATE TABLE books (id INTEGER, title TEXT NOT NULL);

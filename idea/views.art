@@ -1,0 +1,20 @@
+sql [
+    view.create :recentBooks
+    select [id title]
+    from :books
+    where -> publishedYear >= 2020
+]
+
+sql [
+    create.view :recentBooks
+    select [id title]
+    from :books
+    where -> publishedYear >= 2020
+]
+
+---
+CREATE VIEW recentBooks AS
+SELECT id,
+    title
+FROM books
+WHERE publishedYear >= 2020;

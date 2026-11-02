@@ -1,0 +1,18 @@
+sql [
+    select [b\title p\name]
+    from.as: b :books
+    join.full.as: p :publishers -> b\publisherId = p\id
+]
+
+sql [
+    select [b\title p\name]
+    from.as: b 'books
+    join.full.as: p 'publishers -> b\publisherId = p\id
+]
+
+---
+SELECT b.title,
+    p.name
+FROM books AS b
+FULL OUTER JOIN publishers AS p
+ON b.publisherId = p.id;

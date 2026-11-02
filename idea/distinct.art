@@ -1,0 +1,13 @@
+sql [
+    select.distinct genre
+    from :books
+]
+
+sql [
+    select.distinct [genre]
+    from :books
+]
+
+---
+SELECT DISTINCT genre
+FROM books;

@@ -1,0 +1,13 @@
+sql [
+    select.expressions [sum pageCount]
+    from :books
+]
+
+sql [
+    select.sum pageCount
+    from :books
+]
+
+---
+SELECT SUM(pageCount)
+FROM books;

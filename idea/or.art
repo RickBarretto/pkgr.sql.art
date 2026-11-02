@@ -1,0 +1,16 @@
+sql [
+    select title
+    from :books
+    where -> genre = "Poetry" or genre = "History"
+]
+
+sql [
+    select title
+    from :books
+    where [genre = "Poetry" or genre = "History"]
+]
+
+---
+SELECT title
+FROM books
+WHERE genre = 'Poetry' OR genre = 'History';

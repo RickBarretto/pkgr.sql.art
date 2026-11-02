@@ -1,0 +1,23 @@
+sql [
+    select.expressions.as: length [case
+        when [pageCount > 400] "Long"
+        else "Short"
+    ]
+    from :books
+]
+
+sql [
+    select.expressions.as: length [case [
+        when [pageCount > 400] "Long"
+        else "Short"
+    ]]
+    from :books
+]
+
+---
+SELECT
+    CASE
+        WHEN pageCount > 400 THEN 'Long'
+        ELSE 'Short'
+    END AS length
+FROM books;

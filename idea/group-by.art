@@ -1,0 +1,17 @@
+sql [
+    select.expressions [genre [count *]]
+    from :books
+    groupBy genre
+]
+
+sql [
+    select.expressions [genre [count *]]
+    from :books
+    group.by genre
+]
+
+---
+SELECT genre,
+    COUNT(*)
+FROM books
+GROUP BY genre;

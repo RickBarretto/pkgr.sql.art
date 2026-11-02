@@ -1,0 +1,10 @@
+sql [
+    drop.table :archivedBooks
+]
+
+sql [
+    table.drop :archivedBooks
+]
+
+---
+DROP TABLE archivedBooks;

@@ -1,0 +1,29 @@
+sql [
+    from :books
+    select
+    .count: "*"
+    .sum: 'pages
+    .avg: 'pages
+    .min: 'pages
+    .max: 'pages
+    ""
+]
+
+sql [
+    select.expressions [
+        [count *]
+        [sum pageCount]
+        [avg pageCount]
+        [min pageCount]
+        [max pageCount]
+    ]
+    from :books
+]
+
+---
+FROM books
+SELECT COUNT(*),
+    SUM(pageCount),
+    AVG(pageCount),
+    MIN(pageCount),
+    MAX(pageCount);

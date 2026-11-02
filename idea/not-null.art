@@ -1,0 +1,12 @@
+sql [
+    create.table :labels
+    column.notNull name :string
+]
+
+sql [
+    table.create :labels
+    column.notNull name :string
+]
+
+---
+CREATE TABLE labels (name TEXT NOT NULL);

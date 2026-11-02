@@ -1,0 +1,24 @@
+sql [
+    select title
+    from :books
+    intersect [
+        select title
+        from :archivedBooks
+    ]
+]
+
+sql [
+    select title
+    from :books
+    combine.intersect [
+        select title
+        from :archivedBooks
+    ]
+]
+
+---
+SELECT title
+FROM books
+INTERSECT
+SELECT title
+FROM archivedBooks;

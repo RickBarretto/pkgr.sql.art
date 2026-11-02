@@ -1,0 +1,16 @@
+sql [
+    select title
+    from :books
+    where -> publishedYear >= 2020 and available = true
+]
+
+sql [
+    select title
+    from :books
+    where [publishedYear >= 2020 and available = true]
+]
+
+---
+SELECT title
+FROM books
+WHERE publishedYear >= 2020 AND available = 1;

@@ -1,0 +1,16 @@
+sql [
+    insert.into: :books [title publishedYear]
+    values ["River Atlas" 2024]
+    values ["Quiet Maps" 2021]
+]
+
+sql [
+    insert :books [title publishedYear]
+    values ["River Atlas" 2024]
+    values ["Quiet Maps" 2021]
+]
+
+---
+INSERT INTO books (title, publishedYear)
+VALUES ('River Atlas', 2024),
+    ('Quiet Maps', 2021);

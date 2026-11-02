@@ -1,0 +1,18 @@
+sql [
+    alter.table :books
+    column.add 'subtitle :text
+]
+sql [
+    create :books [
+        add 'subtitle :text
+    ]
+]
+
+sql [
+    table.alter :books
+    column.add 'subtitle :text
+]
+
+---
+ALTER TABLE books 
+ADD COLUMN subtitle TEXT;

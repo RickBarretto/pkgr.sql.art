@@ -1,0 +1,13 @@
+sql [
+    select.expressions [min pageCount]
+    from :books
+]
+
+sql [
+    select.min pageCount
+    from :books
+]
+
+---
+SELECT MIN(pageCount)
+FROM books;

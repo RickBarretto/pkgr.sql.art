@@ -1,0 +1,24 @@
+sql [
+    select title
+    from :books
+    union [
+        select title
+        from :archivedBooks
+    ]
+]
+
+sql [
+    select title
+    from :books
+    combine.union [
+        select title
+        from :archivedBooks
+    ]
+]
+
+---
+SELECT title
+FROM books
+UNION
+SELECT title
+FROM archivedBooks;

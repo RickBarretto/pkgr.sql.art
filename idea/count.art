@@ -1,0 +1,13 @@
+sql [
+    select.expressions [count *]
+    from :books
+]
+
+sql [
+    select.count *
+    from :books
+]
+
+---
+SELECT COUNT(*)
+FROM books;

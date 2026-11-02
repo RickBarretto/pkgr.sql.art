@@ -1,0 +1,12 @@
+sql [
+    alter.table :books
+    column.drop subtitle
+]
+
+sql [
+    table.alter :books
+    column.drop subtitle
+]
+
+---
+ALTER TABLE books DROP COLUMN subtitle;

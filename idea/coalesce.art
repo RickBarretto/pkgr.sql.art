@@ -1,0 +1,13 @@
+sql [
+    select.expressions [coalesce subtitle title]
+    from :books
+]
+
+sql [
+    select.coalesce subtitle title
+    from :books
+]
+
+---
+SELECT COALESCE(subtitle, title)
+FROM books;
