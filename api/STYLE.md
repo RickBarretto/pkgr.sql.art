@@ -1,32 +1,39 @@
-# Writing SQL DSL code
+# Writing readable SQL blocks
 
-These conventions describe the SQL function API. Prefer readable Arturo
-function calls over reproducing SQL clause syntax. The [function contracts](API.md)
-define accepted arguments; the preferences here do not narrow those contracts.
+These suggestions help keep queries easy to scan as they grow. The
+[API reference](API.md) documents accepted inputs and dialect support.
 
-## Keep every DSL call inside sql
+## Use consistent names and layout
 
-Use `sql [...]` for queries, schema changes, and writes. Helpers belong to this
-scope, including calls nested inside a table, view, or query body.
+Use four spaces for indentation and one command per line. 
+A useful query order is: 
+1. source and joins, 
+2. projections, 
+3. filters, 
+4. grouping, 
+4. sorting, 
+5. then pagination. 
+
+The compiler accepts clauses in any order:
 
 ```art
-sql [
-    create :books [
-        column.primary 'id :integer
-        column 'title :string
-    ]
+statement: sql [
+    from.as: 'b :books
+    join.left.as: 'p :publishers [b\publisherId = p\id]
+    select [b\title p\name]
+    where [b\available = true]
+    order 'b\title
+    limit 20
 ]
 ```
 
-Keep the outer `sql [...]` form consistent across examples. Use arrow shorthand
-for suitable inner bodies.
+Choose descriptive lowerCamelCase names and short aliases that are easy to
+recognize. Once a table has an alias, use that alias for qualified columns.
 
-## Prefer types for tables
+Use an explicit literal for a column whose name matches a helper, such as
+`select 'count`.
 
-Prefer `:books` for a table and `:recentBooks` for a view or named query. This is
-a writing convention, not a requirement. Identifier arguments also accept
-paths, literal paths, literals, and strings. Words are accepted in captured
-identifier positions.
+Here is the preferred form of usage for each argument:
 
 | Use | Preferred form | Other accepted forms |
 | --- | --- | --- |
@@ -35,116 +42,132 @@ identifier positions.
 | Qualified column | `'b\title` | captured `b\title` |
 | Alias | `'b` | `"b"`, captured `b` |
 
-Use explicit literals for keyword names. Prefer paths for qualification rather
-than strings with embedded dots. Strings in value positions remain SQL values:
-`select "title"` names a column, while `assign 'title "River Atlas"` assigns a
-bound string value. The argument position determines the meaning.
 
-## Make nullable fields explicit
+## Make application values visible
 
-Columns are required by default. Write `column 'title :string` for a NOT NULL
-field. Add `.optional` only when NULL is meaningful, for example
-`column.optional 'subtitle :string`. Column additions follow the same rule:
-`add.optional 'subtitle :string`. Do not write a redundant `.required` flag.
-
-## Pass single values directly
-
-Write `select 'title`, `order 'title`, and `group 'genre`. Use a block when
-passing several identifiers, such as `select [title publishedYear]`.
-
-Do not add a list wrapper around one alias, one aggregate operand, or one
-reference column. A function whose contract requires a block still needs that
-block, even when it contains one item: `row ["River Atlas"]` is a row, not a
-scalar argument. A grouping set such as `[genre]` also retains its boundary.
-
-## Prefer arrows for one expression
-
-When a body contains one complete function call or expression, prefer `->`:
+Use parentheses for Arturo variables and computations. This distinguishes
+application values from SQL column names and captures the value when the
+statement is built.
 
 ```art
-sql [
-    alter :books -> add.optional 'subtitle :string
+minimumYear: 2020
+statement: sql [
+    from :books
+    select [title publishedYear]
+    where [publishedYear >= (minimumYear)]
 ]
+```
 
-sql [
+Use paths such as `b\title` for qualified columns. Strings in predicates and
+rows are values; strings in identifier positions name columns or tables.
+
+## Match brackets to their purpose
+
+Pass individual identifiers directly: `select 'title`, `order 'title`,
+`group 'genre`. Use blocks for lists, such as `select [title publishedYear]`,
+and for rows, such as `row ["River Atlas"]`.
+
+A body containing one complete call or predicate can use `->`. Keep explicit
+blocks for several commands or nested grouping.
+
+```art
+statement: sql [alter :books -> add.optional 'subtitle :string]
+
+statement: sql [
     from :books
     select 'title
     where -> publishedYear >= 2020
 ]
 ```
 
-`->` supplies a block; it does not remove an argument from the function's
-signature. It wraps one terminal expression, not every line that follows.
-Use `[...]` for multiple commands, data lists, explicit grouping, and empty
-blocks. Do not replace a list with an arrow just to remove brackets.
+An arrow wraps one expression. Line breaks do not supply missing arguments or
+extend a call's body.
 
-## Keep structure shallow
+## Keep filters easy to follow
 
-Use repeated commands when they express a flat sequence. Compose helpers
-directly instead of wrapping their results in extra blocks.
+Use repeated `where` calls for independent conditions that must all hold. Use
+prefix `or` or `and` when the grouping matters, with blocks around nested
+conditions. Comparisons use infix operators; `=<` and `<=` are both supported.
 
 ```art
-sql [
+statement: sql [
+    from :books
+    select 'title
+    where [available = true]
+    where [or
+        genre = "Poetry"
+        genre = "History"
+    ]
+    where [publishedYear >= 2020]
+]
+```
+
+Each prefix `and` or `or` takes two predicates; `not` takes one. Keep each
+operand visible when nesting them. Use `is null` and `is not null` for null
+tests.
+
+## Compose calculated columns directly
+
+Give calculated projections useful aliases. Both `select.avg 'pageCount` and
+`select avg 'pageCount` work; use a consistent form within a query.
+
+```art
+statement: sql [
     from :books
     select 'genre
-    select count "*"
+    select.as: 'total count "*"
+    select.as: 'averagePages avg 'pageCount
     group 'genre
     order 'genre
 ]
 ```
 
-Repeated `select` calls append projections. Repeated `order` calls append sort
-keys. Repeated `where` calls combine conditions with AND. Use that last form for
-independent filters, not to express an OR group.
+Use repeated `select` calls to mix identifier lists and calculated projections.
+Repeated `order` calls also make mixed sort directions easy to read.
 
-Keep nesting that establishes ownership or meaning: table bodies, view bodies,
-subqueries, rows, and grouped predicates. A CTE can make a deeply nested query
-easier to read, but introduce one only when its name clarifies the query.
+## Make nullability and write scope explicit
 
-## Respect function arity and operator position
-
-Each function consumes its declared arguments. Newlines and SQL clause names
-do not terminate calls. Attributes refine the same function without changing
-its positional argument count.
-
-Use named boolean functions in prefix position. Comparisons may use Arturo's
-infix symbols. Prefer `=<` for less-or-equal; the SQL output uses `<=`.
+Columns are NOT NULL by default. Use `.optional` when a missing value is
+meaningful. Choose insert columns explicitly so each row's value order is clear.
 
 ```art
-sql [
+statement: sql [create :books [
+    column.primary 'id :integer
+    column 'title :string
+    column.optional 'subtitle :string
+]]
+
+statement: sql [insert.columns: [id title subtitle] :books [
+    row [1 "River Atlas" null]
+]]
+```
+
+Keep update and delete filters next to their assignments or target table.
+Omitting `where` affects every row.
+
+## Order pages consistently
+
+Specify an order when paginating. Include a unique key to make the order
+stable when other sort values tie.
+
+```art
+statement: sql [
     from :books
-    select 'title
-    where -> and
-        publishedYear >= 2020
-        available = true
+    select [id title]
+    order 'title
+    order 'id
+    limit.skip: 20 10
 ]
 ```
 
-`and` and `or` each take two predicate expressions; `not` takes one. Do not
-apply SQL's AND/OR precedence to the DSL. Group compound predicates explicitly
-and keep the tree visible when combining conjunction and disjunction.
+## Keep execution and presentation clear
 
-## Compose projections naturally
+Name a statement when you want to inspect it, compile it for another dialect,
+or pass it to an execution helper. Use `sql.query:` with an open SQLite
+connection to get rows, and format those rows separately when needed. Close
+connections after use, including when execution fails; the
+[execution example](API.md#execution-and-formatting) shows the cleanup pattern.
 
-Use `select avg 'pageCount` or the concise variant `select.avg 'pageCount`.
-Use `select.as: 'averagePages avg 'pageCount` when an expression needs a name.
-Choose one aggregate style within a related group of projections.
-
-Use attributes for clear variations: `create.view`, `join.left`, `order.desc`,
-and `group.rollup`. Give attribute labels their values directly, such as
-`.as: 'b`. Avoid placeholder arguments and expression-mode flags.
-
-## Format for reading
-
-Use four spaces for indentation, one command per line, and spaces around infix
-operators. Put a multiline block's closing bracket at its owner's indentation.
-Keep a short arrow body on one line; indent the operands of a long prefix call.
-Use descriptive lowerCamelCase names and short, meaningful aliases.
-
-Read query bodies in a consistent order: source and joins, projections,
-filters, grouping, sorting, then pagination. This is a writing preference; SQL
-rendering follows the query structure rather than the order of text alone.
-
-In idea files, separate alternatives with a blank line. Keep reference SQL
-directly below `---`, without braces or comments. `---` starts a string through
-the end of the file, so all DSL alternatives must appear above it.
+For PostgreSQL, compile with `to :postgresQuery` and pass its SQL and parameters
+to your driver. The [compiled-output reference](API.md#compiled-output) explains
+multi-statement trigger output and dialect differences.
