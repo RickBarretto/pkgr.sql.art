@@ -5,7 +5,7 @@ See [writing practices](STYLE.md) for preferred spellings and layout.
 Based on [Arturo’s syntax and evaluation rules](https://arturo-lang.io/documentation/language/):
 functions consume a fixed number of positional arguments; attributes add flags
 or named values. Whitespace and line breaks do not determine call boundaries.
-These contracts are a design, not library definitions or an implementation.
+These contracts describe the captured-body interpreter. SQLite conversion rejects unsupported dialect features.
 
 `sql [...]` is the public entry point and the scope for every DSL function.
 `create`, `select`, expression helpers, and all other DSL functions exist only

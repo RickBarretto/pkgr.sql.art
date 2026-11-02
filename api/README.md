@@ -2,8 +2,7 @@
 
 This catalog explores an Arturo API for the features in the
 [SQLTutorial learning sequence](https://www.sqltutorial.org/). Examples use an
-original book catalog. Only `idea/` is changed; these are proposals for a future
-API, not examples supported by the current library.
+original book catalog. The library implements these contracts; see the root README for SQLite dialect limitations.
 
 Start with [the writing guide](STYLE.md) and [the function contracts](API.md),
 then `select/select.art`, `sort/order-by.art`,
@@ -67,10 +66,9 @@ identifier form. They do not add interchangeable names for every function.
 
 ## Validation and scope
 
-The drafts can be read as Arturo values. This alone does not verify their future
-behavior. The proposed API still needs implementation and semantic tests.
-Dialect support must be decided for FETCH, RIGHT/FULL joins, identity columns,
-triggers, TRUNCATE, grouping extensions, and quantified comparisons.
+The specifications exercise construction, conversion and SQLite execution.
+SQLite conversion rejects FETCH, identity columns, TRUNCATE, grouping extensions
+and quantified comparisons. RIGHT/FULL joins depend on the bundled SQLite version.
 
 ## Querying data
 

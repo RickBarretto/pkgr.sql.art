@@ -48,255 +48,137 @@ import {sql}!
 
 ## Documentation
 
-A data-first SQLite SELECT builder for Arturo 0.10.0+.
+An SQL builder for Arturo 0.10.0+, using the function API in [api/API.md](api/API.md).
+Every DSL command belongs inside `sql [...]`. Bodies are captured as SQL data;
+helpers do not replace Arturo's built-in functions.
 
 ```art
 import {sql}!
 
-minimumAge: 18
+minimumYear: 2020
 statement: sql [
-    select [id name email]
-    from users
-    where [
-        age >= (minimumAge)
-        and [active = true or role = "admin"]
-    ]
-    orderBy [name asc]
-    limit 20
+    from :books
+    select [title publishedYear]
+    where -> and publishedYear >= (minimumYear) available = true
+    order.desc 'publishedYear
+    order 'title
+    limit.skip: 0 20
 ]
 compiled: to :sqliteQuery statement
 inspect compiled\text
 inspect compiled\params
 ```
 
-`sql` parses the block into an inspectable dictionary. `to :sqliteQuery` converts
-it into a `:sqliteQuery` object with `text` and `params` fields without executing
-SQL. SQL text uses one clause per line with four-space indentation. Identifiers
-are quoted and values use positional `?` parameters. Execute on an Arturo SQLite
-connection with the built-in `query`:
+`sql` returns an inspectable dictionary. `to :sqliteQuery` produces `text` and
+`params` without executing SQL or mutating the statement. Values use `?` parameters;
+booleans bind as SQLite integers. Parenthesized Arturo computations run once during
+construction, including computations using function-local variables.
+
+Tables, columns and aliases accept types, literals, strings, paths, literal paths,
+and captured words. Prefer `:books` for tables and `'title` for single columns.
+Identifiers are quoted; strings inside predicates, expressions and rows are values.
+Explicit literals allow identifiers that match DSL keywords.
+
+### Queries
+
+Query clauses may appear in any order; the compiler arranges them. Repeated
+`select` calls append projections, repeated `where` and `having` calls combine
+with AND, and repeated `order` calls append sort keys. Each command consumes its
+documented arguments. `->` captures one complete expression.
+
+```art
+sql [
+    from :books
+    select 'genre
+    select.count.as: 'total "*"
+    select avg 'pageCount
+    group 'genre
+    having [[count "*"] > 3]
+    order.desc 'genre
+]
+```
+
+Projections support `.distinct`, `.as:`, `.count`, `.sum`, `.avg`, `.min`, `.max`,
+`.coalesce` and `.nullif`. Composed helpers include aggregates, `coalesce`,
+`nullif` and `choose` with `when`/`otherwise` branches or `.default:`.
+Only COUNT accepts a wildcard. Alias counts must match projections.
+
+Predicates support comparisons (including `=<`), prefix `and`, `or`, `not`,
+`in`, `between`, `like`, `is null`, and `is not null`. Nested blocks preserve
+grouping. Use null tests rather than comparison with null.
+
+`join` defaults to INNER and accepts `.left`, `.right`, `.full` and `.as:`.
+`cross` takes a table with optional `.as:` and no predicate. Nested `query`
+expressions, correlated column paths, `exists`, `with` CTEs and
+`combine.union`/`.intersect`/`.except` are supported. Scalar subqueries require
+one projection and set operations require matching projection counts.
+
+`limit` accepts a nonnegative count and optional `.skip:`; `offset` is an
+alternative to `.skip:` and requires pagination. Use explicit ordering for
+stable pages. Earlier `orderBy`, infix boolean predicates and
+`select.expressions` remain available for existing callers.
+
+### Schema and writes
+
+```art
+sql [create :books [
+    column.primary 'id :integer
+    column 'title :string
+    column.optional 'subtitle :string
+]]
+
+sql [insert.columns: [id title] :books [
+    row [1 "River Atlas"]
+    row [2 "Quiet Maps"]
+]]
+
+sql [update :books [assign 'title "New title" where [id = 1]]]
+sql [delete :books [where [id = 2]]]
+sql [alter :books -> add.optional 'pageCount :integer]
+```
+
+Columns default to NOT NULL. `.optional` permits null and cannot combine with
+`.primary`. `.unique`, table `reference` and `check` constraints are supported.
+SQLite storage mappings are INTEGER, TEXT, REAL and BLOB. Alter bodies support
+one `add`, `remove` or `rename` per SQLite statement.
+
+INSERT requires explicit columns and matching row widths. UPDATE supports
+`assign` and `.values: [column: value]`; write values may include null.
+`create.view`, `drop.view` and `create.trigger` support stored schema statements.
+SQLite prohibits placeholders in stored definitions: scalar AST values in CHECK,
+views and triggers are rendered as escaped SQL literals. Ordinary queries and
+writes remain parameterized.
+
+The builder also accepts the reference's FETCH, grouping extensions, ALL/ANY,
+identity and TRUNCATE forms as data. Conversion to SQLite rejects these with
+explicit errors because SQLite does not support their SQL syntax. RIGHT/FULL
+joins and ALTER DROP COLUMN depend on the SQLite version bundled with Arturo.
+
+### Execution and terminal tables
 
 ```art
 db: open.sqlite ":memory:"
-query db "CREATE TABLE users (id INTEGER, name TEXT, email TEXT, age INTEGER, active INTEGER, role TEXT)"
-query db {INSERT INTO users VALUES (1, 'Ada', 'ada@example.com', 30, 1, 'member')}
 failure: try [
-    rows: query.with: compiled\params db compiled\text
-    inspect rows
+    ignored: sqliteExecute db sql [create :books [column 'title :string]]
+    ignored: sqliteExecute db sql [insert :books [columns 'title row ["River Atlas"]]]
+    print sqliteTable.header: ["Title"] db sql [from :books select 'title]
 ]
 close db
-unless null? failure [throw to :string failure]
+unless null? failure -> throw to :string failure
 ```
 
-The compiled `text` and `params` fields pass directly to `query.with:`. Boolean
-values compile to SQLite integers (`true` → `1`, `false` → `0`), so parameters
-are ready to bind without further conversion. The query dictionary retains the
-original values. Arturo returns its native block of rows (cells are strings on
-Arturo 0.10.0), and database errors propagate to the caller.
+The caller owns the connection. `sqliteExecute` accepts dictionaries or compiled
+queries, returning native rows for SELECT and an empty block for commands that
+produce no rows. Database errors propagate. Compiled fields also work directly
+with Arturo's `query.with: compiled\params db compiled\text`.
 
-`sqliteExecute db statement` remains a convenience wrapper accepting either a
-query dictionary or a compiled `:sqliteQuery` and calling the same built-in API.
-The caller opens and closes the connection. No external SQLite package is
-required. See `examples/sqlite.art` for a runnable example.
-
-### Terminal tables
-
-Use `sqliteTable` to execute a query and format its results with the `tabular`
-package (installed as a dependency). Print the returned string in the terminal:
-
-```art
-print sqliteTable.header: ["ID" "Name" "Email"] db statement
-```
-
-Both query dictionaries and compiled `:sqliteQuery` objects are accepted.
-The optional `.header:` labels must match the number of result columns; omit
-them for a table without a header, including with `select [*]`. Empty results
-return `"No rows."`. The caller still owns and closes the database connection.
-Run `arturo examples/sqlite.art` for a complete terminal example.
-
-Use `statement` rather than `query` as a variable when using the database API:
-Arturo already defines a function named `query`.
-
-### Grammar
-
-Clauses occur in order: `select`, `from`, repeated `where`, optional `orderBy`,
-optional `limit`, optional `offset`. The last requires a limit. Pagination accepts
-nonnegative integers, including zero. Ordering accepts `[name asc id desc]`;
-omitted directions default to ascending.
-
-Columns and tables accept words or literals; `select [*]` selects all columns. Predicates
-support `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, `is null`, and `is not null`.
-Use explicit null tests rather than `= null`. Words and literals represent identifiers;
-strings, numbers, and booleans represent values. Keywords are case-sensitive.
-
-`and` binds more tightly than `or`. Nested blocks group conditions. Repeated
-`where` clauses combine with AND, preserving each predicate's grouping.
-
-Parentheses evaluate trusted Arturo code once during construction, including
-function-local variables. Each expression must return exactly one string,
-number, or boolean. Later compilations reuse the stored value. Internal helper
-bindings use `_sql` prefixes; avoid those names in dynamic expressions.
-
-Query dictionaries contain `kind`, `columns`, `table`, `predicates`, `ordering`,
-`limit`, and `offset`. Predicates use tagged dictionaries for comparisons,
-boolean operations, null tests, identifiers, and bound values. Compilation does
-not mutate these dictionaries.
-
-Subqueries, writes, raw SQL,
-IN, LIKE, BETWEEN, and NOT groups are outside this initial release.
+`sqliteTable` returns a formatted string using the `tabular` dependency.
+Optional `.header:` labels must match the result width; empty results return
+`"No rows."`.
 
 ## Development
 
-Run `unitt`, `arturo src/main.art`, or `arturo examples/select.art`, or
-`arturo examples/sqlite.art`.
-
-### SELECT attributes
-
-Use `select.distinct [name]` to remove duplicate rows, or
-`select.as: [userId userName] [id name]` for positional aliases.
-Alias counts must match; wildcards cannot have aliases.
-
-`select.expressions` enables structured projections:
-
-```art
-sql [
-    select.expressions.as: [total adjusted] [
-        [count [*]]
-        [+ amount 2]
-    ]
-    from orders
-]
-```
-
-Attributes can combine, including `select.distinct.expressions.as:`.
-Aggregates support `count`, `sum`, `avg`, `min`, and `max` with a
-single argument block; only count accepts a wildcard. Arithmetic uses binary
-prefix blocks with `+`, `-`, `*`, or `/` and supports nesting.
-Scalar values are parameterized; parentheses still evaluate Arturo code once.
-
-### Runnable, self-testing examples
-
-Each example includes assertions and exits with an error if a check fails.
-SQLite examples use an in-memory database and close it after execution.
-
-| Command | Demonstrates |
-| --- | --- |
-| `arturo examples/select.art` | Compilation, captured values, and parameter checks |
-| `arturo examples/sqlite.art` | Execution and terminal tables |
-| `arturo examples/aliases.art` | Positional column aliases |
-| `arturo examples/distinct.art` | Duplicate removal |
-| `arturo examples/aggregates.art` | COUNT, SUM, AVG, MIN, MAX with aliases |
-| `arturo examples/arithmetic.art` | Nested addition, subtraction, multiplication, division |
-| `arturo examples/combined.art` | Combined attributes and captured expression values |
-
-CI runs all these examples alongside the unit specifications.
-
-### Joins
-
-Use `join` or `join.inner`, `join.left`, and `join.right`, each followed
-by a table literal and a predicate block, or `-> expression`. Place joins after FROM and before WHERE.
-
-```art
-sql [
-    select [u\id o\userId]
-    from.as: u users
-    join.left.as: o orders -> u\id = o\userId
-]
-```
-
-Table aliases use `.as:`; join attributes may appear in either order.
-Qualified identifiers quote each component separately. The unqualified wildcard `*` is supported in projections. RIGHT JOIN requires support
-from the SQLite library bundled with Arturo.
-
-Run `arturo examples/joins.art` for self-testing inner, left, right, and
-aliased self-join examples.
-
-These two forms are equivalent:
-
-```art
-join orders [u\id = orders\userId]
-join orders -> u\id = orders\userId
-```
-
-For example:
-
-```art
-sql [
-    select [u\id]
-    from.as: u users
-    join orders -> u\id = orders\userId
-    where [u\active = true]
-]
-```
-
-After `->`, the predicate ends at the next `join`, `where`, `orderBy`,
-`limit`, `offset`, or the end of the query. Boolean operators and nested
-predicate blocks are supported. A literal identifier such as `'where` remains an identifier even when its
-name matches a clause keyword. The DSL does not accept an `on` clause;
-the compiler emits SQL ON automatically. Do not combine `->` with an outer
-predicate block.
-
-### Identifier syntax
-
-Clause names and expression operators remain words: `select`, `from`,
-`join`, `orderBy`, `count`, `and`, and `asc`.
-Prefer words and paths for ordinary identifiers. Use explicit forms for keyword
-names or when demonstrating a particular identifier type. SQL identifiers accept
-words, literals, paths, literal paths, strings, and types:
-
-```art
-sql [
-    select ['u\id 'u\name]
-    from.as: 'u 'users
-    join 'orders -> 'u\id = 'orders\userId
-    orderBy ['u\name]
-]
-```
-
-Use `users` or `'users` for a table, `id` or `'id` for a column,
-and `.as: u` or `.as: 'u` for a table alias. Paths such as `'u\id` compile as separately quoted SQL
-components (`"u"."id"`). SELECT alias blocks likewise accept words, literals, strings, or types.
-Bare words that match DSL keywords require literal spelling instead. Strings in expressions remain
-bound values; parenthesized expressions still capture Arturo values once.
-
-Words remain SQL data and are never resolved as Arturo variables.
-Use `from.as: sel 'select` for a table named `select`: the bare word is
-reserved, while the literal explicitly denotes an identifier. The same rule
-applies to aliases and columns, including keyword components in word paths.
-Use a literal path such as `'sel\where` when a component is a keyword.
-
-Run `arturo examples/identifiers.art` for a self-testing mixed-syntax example.
-
-All six identifier forms are demonstrated and tested in
-`arturo examples/identifiers.art`:
-
-| Form | Column example | Table example |
-| --- | --- | --- |
-| Word | `customerId` | `customers` |
-| Literal | `'customerId` | `'customers` |
-| Path | `c\customerId` | `main\customers` |
-| Literal path | `'c\customerId` | `'main\customers` |
-| String | `"customerId"` | `"customers"` |
-| Type | `:customerId` | `:customers` |
-
-Define descriptive custom types before using them as identifiers:
-
-```art
-define :customers []
-define :customerId []
-define :customerName []
-
-sql [
-    select.as: ["ID" "Customer"] [:customerId :customerName]
-    from :customers
-    orderBy [:customerId]
-]
-```
-
-Types contribute their names (`:customers` becomes `"customers"`).
-String and type identifiers can name keywords without literal syntax.
-Strings in predicates and `select.expressions` remain bound values;
-use a word, literal, path, or type for an identifier in those contexts.
-Parenthesized strings remain captured values.
-
-The example includes comments explaining each form, aliases, keyword names,
-and value binding. Every query checks its SQLite results.
+Run `unitt`, `arturo src/main.art`, and the self-testing scripts in `examples/`.
+`examples/api.art` demonstrates the function API with an in-memory database.
+The contracts and feature catalog live in `api/`; dialect-specific limitations
+are described above.

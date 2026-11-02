@@ -6,11 +6,7 @@ sql [
 ]
 
 sql [
-    update.values: [available: false]
-]
-
-sql [
-    :books [
+    update.values: [available: false] :books [
         where [id = 7]
     ]
 ]

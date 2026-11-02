@@ -1,0 +1,28 @@
+import {src/lib.art}!
+
+db: open.sqlite ":memory:"
+failure: try [
+    ignored: sqliteExecute db sql [create :books [
+        column.primary 'id :integer
+        column 'title :string
+        column 'publishedYear :integer
+        column 'available :logical
+    ]]
+    ignored: sqliteExecute db sql [insert :books [
+        columns [id title publishedYear available]
+        row [1 "River Atlas" 2024 true]
+        row [2 "Quiet Maps" 2021 false]
+    ]]
+    minimumYear: 2020
+    statement: sql [
+        from :books
+        select [title publishedYear]
+        where -> and publishedYear >= (minimumYear) available = true
+        order.desc 'publishedYear
+        limit 10
+    ]
+    ensure -> (sqliteExecute db statement) = [["River Atlas" "2024"]]
+    print sqliteTable.header: ["Title" "Year"] db statement
+]
+close db
+unless null? failure -> throw to :string failure

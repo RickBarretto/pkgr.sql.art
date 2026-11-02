@@ -1,6 +1,6 @@
 # Writing SQL DSL code
 
-These conventions describe the API proposed in `idea/`. Prefer readable Arturo
+These conventions describe the SQL function API. Prefer readable Arturo
 function calls over reproducing SQL clause syntax. The [function contracts](API.md)
 define accepted arguments; the preferences here do not narrow those contracts.
 

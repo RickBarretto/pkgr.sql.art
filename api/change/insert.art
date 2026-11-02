@@ -7,11 +7,7 @@ sql [
 ]
 
 sql [
-    insert.columns: [title publishedYear]
-]
-
-sql [
-    :books [
+    insert.columns: [title publishedYear] :books [
         row ["River Atlas" 2024]
         row ["Quiet Maps" 2021]
     ]
