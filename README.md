@@ -138,7 +138,8 @@ stay inside their query. Duplicate relation aliases are rejected. Trigger `new`
 and `old` references are available for INSERT and DELETE respectively, and both
 are available for UPDATE.
 
-`limit` accepts a nonnegative count and optional `.skip:`; `offset` is an
+`limit` and `fetch` accept a nonnegative count and optional `.skip:`; SQLite
+compiles both to LIMIT/OFFSET. `offset` is an
 alternative to `.skip:` and requires pagination. Use explicit ordering for
 stable pages. Earlier `orderBy`, infix boolean predicates and
 `select.expressions` remain available for existing callers.
@@ -175,9 +176,10 @@ views and triggers are rendered as escaped SQL literals. Pagination counts in
 stored queries are rendered as nonnegative integers. Ordinary queries and
 writes remain parameterized.
 
-The builder also accepts the reference's FETCH, grouping extensions, ALL/ANY,
-identity and TRUNCATE forms as data. Conversion to SQLite rejects these with
-explicit errors because SQLite does not support their SQL syntax. RIGHT/FULL
+The builder accepts grouping extensions, ALL/ANY, identity and TRUNCATE as data.
+These compile through `to :postgresQuery`. SQLite rejects them with diagnostics
+that identify the target dialect; it does not silently substitute operations with
+different semantics. RIGHT/FULL
 joins and ALTER DROP COLUMN depend on the SQLite version bundled with Arturo.
 
 ### Execution and terminal tables

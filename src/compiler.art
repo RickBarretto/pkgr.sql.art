@@ -34,7 +34,7 @@ _sqlDefinition: $[definition output] [
                 any -> _sqlFail "Unsupported SQLite storage type"
             ]
             flags: definition\flags
-            if key? flags 'identity -> _sqlFail "SQLite does not support GENERATED AS IDENTITY"
+            if key? flags 'identity -> _sqlFail "SQLite has no GENERATED ALWAYS AS IDENTITY equivalent; use to :postgresQuery"
             result: join @[_sqlQuote definition\name " " storage]
             unless key? flags 'optional -> result: append result " NOT NULL"
             if key? flags 'primary -> result: append result " PRIMARY KEY"
@@ -80,7 +80,7 @@ _sqlCompile: $[data] [
             output\text: join.with: join @["\n" details\operator "\n"] map details\queries 'statement -> _sqlCompileOperand statement output
         ]
         "drop" [output\text: join @["DROP " (key? options 'view) ? ["VIEW "] ["TABLE "] table]]
-        "truncate" -> _sqlFail "SQLite does not support TRUNCATE; use delete"
+        "truncate" -> _sqlFail "SQLite has no TRUNCATE equivalent; use to :postgresQuery, or delete for SQLite row deletion"
         "create" [
             if key? options 'view [
                 output\text: join @["CREATE VIEW " table " AS\n" _sqlCompileInto _sqlSchemaData details\statement output]

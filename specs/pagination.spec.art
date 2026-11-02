@@ -1,0 +1,53 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "Dialect-specific pagination" [
+    it "translates SQLite fetch to limit without mutating the statement" [
+        statement: sql [from :books select id order id fetch.skip: 1 2]
+        snapshot: new statement
+        compiled: to :sqliteQuery statement
+        equivalent: to :sqliteQuery sql [from :books select id order id limit.skip: 1 2]
+        expects.be: 'equal? @[compiled equivalent]
+        expects.be: 'equal? @[compiled\params [2 1]]
+        expects.be: 'equal? @[statement snapshot]
+        postgres: to :postgresQuery statement
+        expects.be: 'equal? @[postgres\params [1 2]]
+        expects.be: 'equal? @[contains? postgres\text {OFFSET
+    $1 ROWS
+FETCH FIRST
+    $2 ROWS ONLY} true]
+    ]
+
+    it "executes SQLite fetch, offset and zero-count pages" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            ignored: sqliteExecute db sql [create :books -> column id :integer]
+            ignored: sqliteExecute db sql [insert :books [columns id row [1] row [2] row [3]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :books select id order id fetch.skip: 1 1] [["2"]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :books select id order id fetch 1 offset 2] [["3"]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :books select id order id fetch 0] []]
+            ignored: sqliteExecute db sql [create.view :page [from :books select id order id fetch.skip: 1 1]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :page select id] [["2"]]]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+
+    it "points SQLite callers to the PostgreSQL compiler for incompatible features" [
+        loop [
+            [from :books select genre group.rollup genre]
+            [from :books select genre group.cube genre]
+            [from :books select genre group.sets [[genre] []]]
+            [from :books select id where [id > all query [from :books select id]]]
+            [from :books select id where [id > any query [from :books select id]]]
+            [create :books [column.identity id :integer]]
+            [truncate :books]
+        ] '_dialectInput [
+            statement: sql _dialectInput
+            failure: try [ignored: to :sqliteQuery statement]
+            expects.be: 'equal? @[type failure :error]
+            expects.be: 'equal? @[contains? get failure 'message "postgresQuery" true]
+            expects.be: 'equal? @[type to :postgresQuery statement :postgresQuery]
+        ]
+    ]
+]

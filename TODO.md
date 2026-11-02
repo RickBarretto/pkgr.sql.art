@@ -27,7 +27,7 @@ syntax decisions; they do not indicate implemented support.
 - [x] [`order keys`](api/sort/order-by.art): scalar/list keys, `.asc`, `.desc`, and appended sort keys.
 - [x] [`limit count`](api/limit/limit.art): nonnegative counts and `.skip:` pagination.
 - [x] `offset count`: separate pagination offset; reject conflicts with `.skip:`.
-- [ ] [`fetch count`](api/limit/fetch.art): `.skip:` is parsed and validated; **dialect pending** because SQLite lacks FETCH syntax.
+- [x] [`fetch count`](api/limit/fetch.art): SQLite translates to LIMIT/OFFSET; PostgreSQL emits native FETCH/OFFSET.
 
 ## Filtering
 
@@ -178,7 +178,7 @@ is compiler-tested; no PostgreSQL server execution is claimed. “Translate” i
 | CROSS JOIN and self joins | Supported | Supported | Supported |
 | `order.asc`, `order.desc` | Supported | Supported | Supported |
 | `limit`, `.skip:`, `offset` | Supported | Supported | Supported |
-| `fetch` | Rejected | Native FETCH | Proposed translation to LIMIT/OFFSET |
+| `fetch` | Translated to LIMIT/OFFSET | Native FETCH | Proposed translation to LIMIT/OFFSET |
 | `group` | Supported | Supported | Supported |
 | `having` | Supported | Supported | Supported |
 | `group.rollup` | Rejected | Native ROLLUP | WITH ROLLUP |
@@ -270,3 +270,9 @@ execution tests are distinct from compiler tests and must not be claimed until r
 - Trigger helper names use `sql_trigger_` plus a deterministic SHA1 digest of table and trigger names; no existing function is replaced.
 - Stored definitions inline escaped literals. PostgreSQL trigger dollar-quote delimiters avoid collisions with body content.
 - SQLite continues to reject non-equivalent identity, grouping, quantified comparison and truncate operations.
+
+### SQLite dialect boundary
+
+- [x] Translate `fetch`/`.skip:` to LIMIT/OFFSET without mutating the input or changing bound parameter order.
+- [x] Keep non-equivalent SQLite operations explicit: grouping extensions, ALL/ANY, GENERATED ALWAYS identity and TRUNCATE diagnostics point to `to :postgresQuery`.
+- [ ] Choose any future SQLite emulation or identity/truncate mapping separately; no implicit semantic substitution is implemented.

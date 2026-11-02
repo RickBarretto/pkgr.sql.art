@@ -125,7 +125,6 @@ HAVING
 
     it "reports unsupported SQLite features explicitly" [
         loop [
-            [from :books select title fetch 2]
             [from :books select genre group.rollup genre]
             [from :books select genre group.cube genre]
             [from :books select genre group.sets [[genre] []]]

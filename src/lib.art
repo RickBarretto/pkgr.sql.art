@@ -274,7 +274,7 @@ _sqlRender: $[node output] [
         "alias" -> return join @[_sqlRender node\argument output " AS " _sqlQuote node\value]
         "function" -> return join @[node\operator "(" join.with:", " map node\arguments 'argument -> _sqliteScalar argument output ")"]
         "subquery" -> return join @["(" _sqlCompileInto node\query output ")"]
-        "quantified" -> _sqlFail "SQLite does not support ALL or ANY comparisons"
+        "quantified" -> _sqlFail "SQLite cannot compile ALL/ANY comparisons; use to :postgresQuery"
         "exists" -> return join @["EXISTS " _sqlRender node\argument output]
         "negation" -> return join @["NOT (" _sqlRender node\argument output ")"]
         "in" -> return join @[_sqlRender node\left output " IN (" join.with:", " map node\arguments 'argument -> _sqliteComparable argument node\left output ")"]
@@ -364,14 +364,13 @@ _sqlCompileSelect: $[data] [
     if key? data 'details [
         details: data\details
         unless empty? details\groups [
-            if details\groupMode <> "" -> _sqlFail "SQLite does not support grouping extensions"
+            if details\groupMode <> "" -> _sqlFail join @["SQLite cannot compile group." details\groupMode "; use to :postgresQuery or plain group"]
             output\text: join @[output\text "\nGROUP BY\n    " join.with:", " map details\groups 'name -> _sqlQuote name]
         ]
     ]
     if key? data 'details [
         filters: map data\details\having 'predicate -> _sqlRender predicate output
         unless empty? filters -> output\text: join @[output\text "\nHAVING\n    " join.with:"\n    AND " filters]
-        if data\details\fetch -> _sqlFail "SQLite does not support FETCH; use limit"
     ]
     orders: map data\ordering 'order [
         join @[_sqlQuote order\column " " upper order\direction]
