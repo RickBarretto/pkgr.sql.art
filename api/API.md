@@ -7,11 +7,11 @@ functions consume a fixed number of positional arguments; attributes add flags
 or named values. Whitespace and line breaks do not determine call boundaries.
 These contracts describe the captured-body interpreter shared by SQLite and
 PostgreSQL compilation. `to :sqliteQuery` selects SQLite; `to :postgresQuery`
-selects PostgreSQL. Conversion generates data only; database execution is separate.
+selects PostgreSQL. Conversion generates data only; execution is available through `sql.query:` or the SQLite compatibility helpers.
 SQLite maps FETCH to LIMIT/OFFSET and rejects the remaining unsupported features
 with diagnostics that point to the PostgreSQL target.
 
-`sql [...]` is the public entry point and the scope for every DSL function.
+`sql [...]` is the construction entry point and the scope for every DSL function.
 `create`, `select`, expression helpers, and all other DSL functions exist only
 inside that scope or its nested bodies. They do not become global Arturo
 functions. Fragments in contract tables are calls within this scope.
@@ -116,7 +116,7 @@ UPDATE; these names are rejected outside their owning trigger scope.
 | `select.count`, `.sum`, `.avg`, `.min`, `.max` | `operand Identifier` | Append one aggregate; only count accepts `*` |
 | `select.coalesce`, `.nullif` | `operands :block` | Coalesce accepts at least two operands; nullif exactly two |
 | `where` | `predicate :block` | Repeated calls combine with AND |
-| `join` | `table Identifier`, `predicate :block` | Default inner; `.left`, `.right`, `.full`; `.as:` alias |
+| `join` | `table Identifier`, `predicate :block` | Default inner; `.inner`, `.left`, `.right`, `.full`; `.as:` alias |
 | `cross` | `table Identifier` | Cross join; `.as:` alias; no artificial empty predicate |
 | `order` | `keys Identifiers` | Default ascending; `.asc` or `.desc`; repeated calls append sort keys |
 | `group` | `keys Identifiers` | `.rollup`/`.cube` take keys; `.sets` takes a block of grouping blocks |
@@ -145,7 +145,7 @@ sql [
 | --- | --- | --- |
 | `count`, `sum`, `avg`, `min`, `max` | `operand Identifier` | One aggregate expression; only count accepts `"*"` |
 | `coalesce` | `operands :block` | One expression; at least two operands |
-| `nullif` | `left Identifier / Scalar`, `right Identifier / Scalar` | One nullif expression |
+| `nullif` | `left Identifier / Scalar / Expression`, `right Identifier / Scalar / Expression` | One nullif expression |
 | `choose` | `branches :block` | One conditional expression; optional `.default:` |
 
 `select` always consumes one argument. In `select avg 'pageCount`, that argument
@@ -160,9 +160,10 @@ nested expression blocks as grouping, not as host Arturo computations.
 
 Predicate blocks use Arturo function-call syntax. Comparisons may use their
 native infix symbols; named boolean functions are prefix calls: `and` and `or`
-consume two predicate expressions, and `not` consumes one. There is no SQL-style
-AND/OR precedence in the DSL. Arity and explicit grouping determine the tree;
-only generated SQL uses infix AND/OR. Scalar helpers work on either side of
+consume two predicate expressions, and `not` consumes one. For prefix calls,
+arity and explicit grouping determine the tree.
+The compatibility syntax also accepts infix `and`/`or`, with AND binding before
+OR; prefer prefix calls and explicit grouping in new code. Scalar helpers work on either side of
 comparisons. Nested scalar-expression blocks must contain one complete expression.
 Arithmetic uses `+`, `-`, `*`, and `/` as prefix or infix calls, groups from the
 right, and preserves explicit grouping blocks.
@@ -221,7 +222,17 @@ and `.optional` flag apply to `add`. There is no `.required` flag. A primary-key
 column cannot be `.optional`; reject that combination rather than silently
 ignoring it. Optional columns omit NOT NULL in the generated SQL.
 
-`:integer` maps to SQL INTEGER; `:string` to SQL TEXT. The table name `:books`
+Supported storage types are:
+
+| Arturo type | SQLite | PostgreSQL |
+| --- | --- | --- |
+| `:integer` | INTEGER | INTEGER |
+| `:string` | TEXT | TEXT |
+| `:logical` | INTEGER | BOOLEAN |
+| `:floating` | REAL | DOUBLE PRECISION |
+| `:binary` | BLOB | BYTEA |
+
+Other storage types are rejected during compilation. The table name `:books`
 is an identifier, while the second argument of `column 'title :string` describes
 storage. Additional type mappings and identity behavior depend on the dialect.
 PostgreSQL identity compiles to GENERATED ALWAYS AS IDENTITY on an integer,
@@ -250,3 +261,30 @@ driver integration, DDL execution, transactions and helper-function cleanup.
 The PostgreSQL compiler covers the reference catalog, including FETCH, ROLLUP,
 CUBE, GROUPING SETS, ALL/ANY, identity and TRUNCATE. This is compilation coverage,
 not a claim of PostgreSQL server execution testing. MySQL is not yet implemented.
+
+
+## Execution and formatting
+
+These public functions are called in ordinary Arturo code, outside captured DSL bodies.
+
+| Call | Input | Result |
+| --- | --- | --- |
+| `sql.query: db statement` | DSL block, statement dictionary, or `:sqliteQuery` | Native SQLite rows |
+| `sqliteExecute db statement` | Statement dictionary or `:sqliteQuery` | Native SQLite rows; compatibility wrapper |
+| `sqliteTable db statement` | Statement dictionary or `:sqliteQuery` | Formatted string; optional `.header: :block` |
+
+`db` must be an open native `:database` connection. The caller owns and closes it.
+Commands without rows return `[]`; database errors propagate. Raw SQL strings and
+`:postgresQuery` objects are rejected by these execution helpers. Plain `sql`
+without `.query:` accepts only a DSL block and returns a dictionary.
+
+`sqliteTable` returns `"No rows."` for empty results; for nonempty results, header
+counts must match the result width. Alternatively, pass the rows from `sql.query:`
+to the imported `tabular` function, guarding empty results before formatting.
+See the root README's [complete execution example](../README.md#execution-and-terminal-tables).
+
+## Compatibility syntax
+
+Existing callers may use `orderBy [name asc id desc]`, infix boolean predicates,
+and `select.expressions` with a block of legacy expression forms. Prefer `order`,
+prefix boolean calls and composed projection helpers for new code.

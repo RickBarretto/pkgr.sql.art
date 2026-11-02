@@ -1,6 +1,6 @@
-# SQL function API ideas
+# SQL function API catalog
 
-This catalog explores an Arturo API for the features in the
+This catalog documents the implemented Arturo API for the features in the
 [SQLTutorial learning sequence](https://www.sqltutorial.org/). Examples use an
 original book catalog. The library implements these contracts; see the root README for SQLite dialect limitations.
 
@@ -31,7 +31,10 @@ sql [
 ```
 
 `sql [...]` provides the scope for every DSL function, including creation and
-write commands. Only `sql` is a public entry point; helpers remain scoped.
+write commands. `sql` constructs statements; `sql.query:` executes them against SQLite.
+`sqliteExecute` and `sqliteTable` are also public compatibility helpers.
+DSL commands such as `select` remain scoped. See the
+[execution contracts](API.md#execution-and-formatting).
 Functions have fixed positional arguments. `create` and `create.view` both take
 an identifier and a body block. A body is needed even for one command; use `->` when it contains one complete
 expression and `[...]` when it contains several commands. Single identifiers need no block: `select 'title`,

@@ -113,6 +113,7 @@ not claimed. MySQL plans below remain proposals awaiting syntax decisions.
 
 ## Execution and delivery
 
+- [x] `sql.query: db statement`: execute captured blocks, dictionaries or compiled SQLite queries; return native rows.
 - [x] `to :sqliteQuery statement`: deterministic compilation to `text` and `params` without mutating input.
 - [x] Preserve SQLite numeric and null parameter semantics using package-owned scoped functions; keep native functions unchanged.
 - [x] `sqliteExecute db statement`: native query rows; empty result for commands without rows; caller-owned connection.
@@ -214,10 +215,10 @@ SQLite and PostgreSQL spellings are implemented. MySQL spelling remains a propos
 | Detail | SQLite: implemented | PostgreSQL: implemented | MySQL: candidate |
 | --- | --- | --- | --- |
 | Query type | `:sqliteQuery` | `:postgresQuery` | `:mysqlQuery` |
-| Output fields | `text`, `params` | `text`, `params` | `text`, `params` |
+| Output fields | `text`, `params` | `text`, `params`, `statements` | `text`, `params` |
 | Identifier quoting | `"name"` | `"name"` | `` `name` `` |
 | Parameter placeholders | `?` | `$1`, `$2`, ... | `?` |
-| Arturo execution adapter | `sqliteExecute`, `sqliteTable` | Separate future work | Separate future work |
+| Arturo execution adapter | `sql.query:`, `sqliteExecute`, `sqliteTable` | Separate future work | Separate future work |
 
 SQL generation can be implemented without a native Arturo database driver.
 Execution, connections and driver integration are separate work items. Server
