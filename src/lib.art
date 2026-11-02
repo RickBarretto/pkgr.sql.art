@@ -236,7 +236,23 @@ _sqlFreeze: $[tokens] [
 
 import ./{validation.art}!
 
-sql: $[_sqlInput :block] -> _sqlValidate _sqlBuild _sqlFreeze _sqlInput
+sql: $[_sqlInput] [
+    ;; options: [
+    ;;     query: :database « execute the statement and return rows
+    ;; ]
+    executing: attr? 'query
+    db: attr 'query
+    if executing [
+        unless :database = type db -> _sqlFail "sql.query: requires a database connection"
+    ]
+    statement: _sqlInput
+    if :block = type statement [
+        statement: _sqlValidate _sqlBuild _sqlFreeze statement
+    ]
+    if executing -> return _sqlExecute db statement
+    unless :block = type _sqlInput -> _sqlFail "sql requires a block without .query:"
+    statement
+]
 
 _sqlQuotePart: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
 
@@ -431,12 +447,17 @@ define :postgresQuery [
 
 ; The caller owns the connection and closes it after use.
 
-sqliteExecute: $[db :database statement] [
+; Arturo currently implements only SQLite connections; MySQL's driver is a stub.
+; Keep dialect compilation here until the runtime exposes additional backends.
+_sqlExecute: $[db :database statement] [
     if :dictionary = type statement -> statement: to :sqliteQuery statement
     unless :sqliteQuery = type statement -> _sqlFail "Expected SQL query dictionary or sqliteQuery"
     results: @[query.with: statement\params db statement\text]
     (empty? results) ? [[]] [first results]
 ]
+
+; Compatibility entry point; new callers can use sql.query: db statement.
+sqliteExecute: $[db :database statement] -> _sqlExecute db statement
 
 ; Return terminal-ready text; keep execution results available via sqliteExecute.
 

@@ -14,8 +14,9 @@ failure: try [
         orderBy [name]
     ]
     compiled: to :sqliteQuery statement
-    ensure -> (sqliteExecute db compiled) = [["1" "Ada"]]
-    print sqliteTable.header: ["ID" "Name"] db compiled
+    rows: sql.query: db compiled
+    ensure -> rows = [["1" "Ada"]]
+    print tabular.header: ["ID" "Name"] rows
 ]
 
 close db

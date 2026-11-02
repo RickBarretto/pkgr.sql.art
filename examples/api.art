@@ -2,13 +2,13 @@ import {src/lib.art}!
 
 db: open.sqlite ":memory:"
 failure: try [
-    ignored: sqliteExecute db sql [create :books [
+    ignored: sql.query: db [create :books [
         column.primary 'id :integer
         column 'title :string
         column 'publishedYear :integer
         column 'available :logical
     ]]
-    ignored: sqliteExecute db sql [insert :books [
+    ignored: sql.query: db [insert :books [
         columns [id title publishedYear available]
         row [1 "River Atlas" 2024 true]
         row [2 "Quiet Maps" 2021 false]
@@ -40,7 +40,7 @@ failure: try [
         sql [with :archived [from :books select 'title where [available = false]] from :archived select 'title]
     ]]
     ensure -> (sqliteExecute db combined) = [["Quiet Maps"] ["River Atlas"]]
-    print sqliteTable.header: ["Title" "Year"] db statement
+    print tabular.header: ["Title" "Year"] sql.query: db statement
 ]
 close db
 unless null? failure -> throw to :string failure

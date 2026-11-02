@@ -221,8 +221,10 @@ or its table does not automatically remove its generated function.
 
 PostgreSQL support is compilation-only: SQL generation, parameter order and
 catalog coverage are tested, but no PostgreSQL server execution or Arturo driver
-integration is claimed. `sqliteExecute` and `sqliteTable` accept only SQLite
-statements. MySQL remains a documented proposal in [TODO.md](TODO.md).
+integration is claimed. `sql.query:`, `sqliteExecute` and `sqliteTable` execute
+SQLite statements only. Arturo currently implements SQLite connections; its
+advertised MySQL connection and query branches are stubs. MySQL compilation
+remains a documented proposal in [TODO.md](TODO.md).
 Run `arturo examples/postgres.art` for a compilation example without a database.
 
 ### Execution and terminal tables
@@ -230,17 +232,38 @@ Run `arturo examples/postgres.art` for a compilation example without a database.
 ```art
 db: open.sqlite ":memory:"
 failure: try [
-    ignored: sqliteExecute db sql [create :books [column 'title :string]]
-    ignored: sqliteExecute db sql [insert :books [columns 'title row ["River Atlas"]]]
-    print sqliteTable.header: ["Title"] db sql [from :books select 'title]
+    ignored: sql.query: db [create :books [column 'title :string]]
+    ignored: sql.query: db [insert :books [columns 'title row ["River Atlas"]]]
+    rows: sql.query: db [from :books select 'title]
+    print tabular.header: ["Title"] rows
 ]
 close db
 unless null? failure -> throw to :string failure
 ```
 
-The caller owns the connection. `sqliteExecute` accepts dictionaries or compiled
-queries, returning native rows for SELECT and an empty block for commands that
-produce no rows. Database errors propagate. Compiled fields also work directly
+The caller owns the connection. `sql.query: db` accepts DSL blocks, statement
+dictionaries, or compiled `:sqliteQuery` objects. It returns native rows for SELECT
+and an empty block for commands that produce no rows. Database errors propagate.
+Plain `sql [...]` continues to build a dictionary without executing it. No dialect
+attribute is needed for the currently implemented SQLite backend. PostgreSQL
+compiled objects are rejected by this execution path.
+
+Use `tabular` separately to configure formatting and return a string:
+
+```art
+statement: sql [from :books select 'title]
+text: tabular.header: ["Title"] sql.query: db statement
+```
+
+`tabular` requires at least one row. For potentially empty results, guard formatting:
+
+```art
+rows: sql.query: db statement
+text: (empty? rows) ? ["No rows."] [tabular.header: ["Title"] rows]
+```
+
+`sqliteExecute db statement` remains available as a compatibility wrapper,
+accepting dictionaries and compiled SQLite queries. Compiled fields also work directly
 with Arturo's `query.with: compiled\params db compiled\text`.
 
 `sqliteTable` returns a formatted string using the `tabular` dependency.

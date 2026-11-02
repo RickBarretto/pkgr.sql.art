@@ -1,6 +1,66 @@
 import {unitt}!
 import {src/lib.art}!
 
+describe "SQL query attribute" [
+    it "executes blocks, dictionaries and compiled statements and composes with tabular" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            expects.be: 'equal? @[sql.query: db [create :books [
+                column title :string column available :logical
+            ]] []]
+            expects.be: 'equal? @[sql.query: db [insert :books [
+                columns [title available]
+                row ["River Atlas" true]
+                row ["Quiet Maps" false]
+            ]] []]
+            counter: #[calls: 0]
+            nextTitle: $[] [counter\calls: counter\calls + 1 "River Atlas"]
+            rows: @[sql.query: db [
+                from :books select title where [title = (nextTitle) and available = true]
+            ]]
+            expects.be: 'equal? @[rows [[["River Atlas"]]]]
+            expects.be: 'equal? @[counter\calls 1]
+            statement: sql [from :books select title where [available = true]]
+            snapshot: new statement
+            compiled: to :sqliteQuery statement
+            expects.be: 'equal? @[sql.query: db statement [["River Atlas"]]]
+            expects.be: 'equal? @[sql.query: db compiled [["River Atlas"]]]
+            expects.be: 'equal? @[statement snapshot]
+            text: tabular.header: ["Book title"] sql.query: db statement
+            expects.be: 'equal? @[type text :string]
+            expects.be: 'equal? @[contains? text "Book title" true]
+            expects.be: 'equal? @[contains? text "River Atlas" true]
+            expects.be: 'equal? @[sql.query: db [
+                from :books select title where [title = {x' OR 1=1 --}]
+            ] []]
+            executionError: try [ignored: sql.query: db [from :missing select title]]
+            expects.be: 'equal? @[type executionError :error]
+            ; Execution errors do not close the caller's connection.
+            expects.be: 'equal? @[query db "SELECT 1" [["1"]]]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+
+    it "rejects invalid connections and unsupported execution inputs" [
+        loop [true "db" 1] 'invalidDb [
+            failure: try [ignored: sql.query: invalidDb [from :books select title]]
+            expects.be: 'equal? @[type failure :error]
+        ]
+        db: open.sqlite ":memory:"
+        failure: try [
+            loop @["SELECT 1" 1 to :postgresQuery sql [from :books select title]] 'invalidStatement [
+                invalidError: try [ignored: sql.query: db invalidStatement]
+                expects.be: 'equal? @[type invalidError :error]
+            ]
+            invalidError: try [ignored: sql #[kind: "select"]]
+            expects.be: 'equal? @[type invalidError :error]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+]
+
 describe "SQLite execution adapter" [
     it "executes dictionaries and compiled queries with SQLite booleans" [
         db: open.sqlite ":memory:"
