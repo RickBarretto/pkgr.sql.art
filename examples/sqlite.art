@@ -13,8 +13,11 @@ failure: try [
         orderBy [name]
     ]
     compiled: to :sqliteQuery statement
+    ensure -> (sqliteExecute db compiled) = [["1" "Ada"]]
     print sqliteTable.header: ["ID" "Name"] db compiled
 ]
 
 close db
 unless null? failure [throw to :string failure]
+
+print "sqlite: passed"

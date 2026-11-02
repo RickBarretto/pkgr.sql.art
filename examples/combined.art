@@ -1,0 +1,21 @@
+import relative "../src/lib.art"!
+
+; Run with: arturo examples/combined.art
+; Each example checks its results against an in-memory SQLite database.
+bonus: 2
+db: open.sqlite ":memory:"
+failure: try [
+    query db "CREATE TABLE orders (amount INTEGER)"
+    query db {INSERT INTO orders VALUES (10), (10), (20)}
+    statement: sql [
+        select.distinct.expressions.as: [adjusted] [[+ amount (bonus)]] from orders where [amount < 20]
+    ]
+    compiled: to :sqliteQuery statement
+    rows: sqliteExecute db compiled
+    ensure -> rows = [["12"]]
+    print compiled\text
+    inspect rows
+]
+close db
+unless null? failure [throw to :string failure]
+print "combined: passed"

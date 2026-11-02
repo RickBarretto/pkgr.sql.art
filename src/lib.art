@@ -84,6 +84,26 @@ _sqlPredicate: $[tokens] [
     node
 ]
 
+_sqlProjection: $[token] [
+    if :inline = type token [return _sqlValue token]
+    if "*" = to :string token [return #[kind: "wildcard"]]
+    unless :block = type token [return _sqlOperand token]
+    if empty? token [_sqlFail "Empty SQL expression"]
+    operator: to :string first token
+    if contains? ["+" "-" "*" "/"] operator [
+        if 3 <> size token [_sqlFail "Arithmetic requires two operands"]
+        return #[kind: "arithmetic" operator: operator left: _sqlProjection get token 1 right: _sqlProjection get token 2]
+    ]
+    unless contains? ["count" "sum" "avg" "min" "max"] operator [_sqlFail "Unsupported SQL expression"]
+    if 2 <> size token [_sqlFail "Aggregate requires one argument block"]
+    arguments: get token 1
+    unless :block = type arguments [_sqlFail "Expected aggregate argument block"]
+    if 1 <> size arguments [_sqlFail "Aggregate requires one argument"]
+    argument: _sqlProjection first arguments
+    if and? argument\kind = "wildcard" operator <> "count" [_sqlFail "Only count accepts wildcard"]
+    #[kind: "aggregate" operator: upper operator argument: argument]
+]
+
 sql: $[_sqlInput] [
     _sqlState: #[tokens: _sqlInput position: 0]
     _sqlQuery: #[
@@ -96,12 +116,52 @@ sql: $[_sqlInput] [
         offset: null
     ]
     if "select" <> _sqlText _sqlTake _sqlState [_sqlFail "Expected select"]
+    _sqlQuery\distinct: false
+    _sqlQuery\aliases: []
+    _sqlExpressions: false
+    _sqlSeen: []
+    while [contains? [:attribute :attributelabel] type get _sqlInput _sqlState\position] [
+        _sqlAttribute: _sqlTake _sqlState
+        _sqlName: to :string _sqlAttribute
+        if contains? _sqlSeen _sqlName [_sqlFail "Duplicate SELECT attribute"]
+        _sqlSeen: append _sqlSeen _sqlName
+        case _sqlName [
+            "distinct" [
+                unless :attribute = type _sqlAttribute [_sqlFail "distinct is a flag"]
+                _sqlQuery\distinct: true
+            ]
+            "expressions" [
+                unless :attribute = type _sqlAttribute [_sqlFail "expressions is a flag"]
+                _sqlExpressions: true
+            ]
+            "as" [
+                unless :attributelabel = type _sqlAttribute [_sqlFail "as requires aliases"]
+                _sqlQuery\aliases: _sqlTake _sqlState
+                unless :block = type _sqlQuery\aliases [_sqlFail "Expected alias block"]
+            ]
+            any [_sqlFail "Unknown SELECT attribute"]
+        ]
+    ]
     _sqlColumns: _sqlTake _sqlState
     unless :block = type _sqlColumns [_sqlFail "Expected column block"]
     if empty? _sqlColumns [_sqlFail "Select requires columns"]
     loop _sqlColumns '_sqlColumn [
+        if _sqlExpressions [
+            _sqlQuery\columns: append _sqlQuery\columns _sqlProjection _sqlColumn
+        ]
+        unless _sqlExpressions [
         unless or? :word = type _sqlColumn "*" = to :string _sqlColumn [_sqlFail "Invalid column"]
         _sqlQuery\columns: append _sqlQuery\columns to :string _sqlColumn
+    ]
+    ]
+    if contains? _sqlSeen "as" [
+        if (size _sqlQuery\aliases) <> size _sqlQuery\columns [_sqlFail "Alias count must match projections"]
+        loop _sqlQuery\aliases '_sqlAlias [
+            unless :word = type _sqlAlias [_sqlFail "Expected alias identifier"]
+        ]
+        loop _sqlColumns '_sqlColumn [
+            if "*" = to :string _sqlColumn [_sqlFail "Cannot alias wildcard"]
+        ]
     ]
     if "from" <> _sqlText _sqlTake _sqlState [_sqlFail "Expected from"]
     _sqlTable: _sqlTake _sqlState
@@ -161,6 +221,12 @@ _sqlQuote: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
 
 _sqlRender: $[node output] [
     case node\kind [
+        "wildcard" [return "*"]
+        "aggregate" [return join @[node\operator "(" _sqlRender node\argument output ")"]]
+        "arithmetic" [
+            if or? node\left\kind = "wildcard" node\right\kind = "wildcard" [_sqlFail "Wildcard arithmetic is invalid"]
+            return join @["(" _sqlRender node\left output " " node\operator " " _sqlRender node\right output ")"]
+        ]
         "identifier" [return _sqlQuote node\value]
         "value" [
             ; SQLite binds booleans as integers; Arturo otherwise binds them as text.
@@ -196,10 +262,22 @@ _sqlCompile: $[data] [
     unless data\kind = "select" [_sqlFail "Expected select query"]
     output: #[text: "" params: []]
     columns: map data\columns 'column [
-        (column = "*") ? ["*"] [_sqlQuote column]
+        (:dictionary = type column) ? [_sqlRender column output] [
+            (column = "*") ? ["*"] [_sqlQuote column]
+        ]
     ]
+    ignoredAliases: @[if key? data 'aliases [
+        index: 0
+        loop data\aliases 'columnAlias [
+            set columns index join @[get columns index " AS " _sqlQuote to :string columnAlias]
+            index: index + 1
+        ]
+    ]
+    ]
+    selectPrefix: "SELECT"
+    if and? key? data 'distinct data\distinct [selectPrefix: "SELECT DISTINCT"]
     output\text: join @[
-        "SELECT\n    " join.with:",\n    " columns
+        selectPrefix "\n    " join.with:",\n    " columns
         "\nFROM\n    " _sqlQuote data\table
     ]
     filters: map data\predicates 'predicate [_sqlRender predicate output]
@@ -225,8 +303,10 @@ _sqlCompile: $[data] [
 
 ; Dictionary conversion matches constructor arguments by field name.
 define :sqliteQuery [
-    init: method [kind columns table predicates ordering limit offset] [
+    init: method [kind columns table predicates ordering limit offset distinct aliases] [
         compiled: _sqlCompile #[
+            distinct: distinct
+            aliases: aliases
             kind: kind
             columns: columns
             table: table

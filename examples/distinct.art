@@ -1,0 +1,21 @@
+import relative "../src/lib.art"!
+
+; Run with: arturo examples/distinct.art
+; Each example checks its results against an in-memory SQLite database.
+db: open.sqlite ":memory:"
+failure: try [
+    query db "CREATE TABLE users (name TEXT)"
+    query db {INSERT INTO users VALUES ('Ada'), ('Ada'), ('Bob')}
+    statement: sql [
+        select.distinct [name] from users orderBy [name]
+    ]
+    compiled: to :sqliteQuery statement
+    rows: sqliteExecute db compiled
+    ensure -> rows = [["Ada"] ["Bob"]]
+    print compiled\text
+    inspect rows
+]
+
+close db
+unless null? failure [throw to :string failure]
+print "distinct: passed"

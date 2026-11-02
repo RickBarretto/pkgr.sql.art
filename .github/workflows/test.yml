@@ -80,3 +80,13 @@ jobs:
               run: |
                 cd $GITHUB_WORKSPACE
                 unitt
+
+            - name: Run self-testing examples
+              run: |
+                arturo examples/select.art
+                arturo examples/sqlite.art
+                arturo examples/aliases.art
+                arturo examples/distinct.art
+                arturo examples/aggregates.art
+                arturo examples/arithmetic.art
+                arturo examples/combined.art

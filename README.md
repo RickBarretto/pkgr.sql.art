@@ -148,3 +148,44 @@ IN, LIKE, BETWEEN, and NOT groups are outside this initial release.
 
 Run `unitt`, `arturo src/main.art`, or `arturo examples/select.art`, or
 `arturo examples/sqlite.art`.
+
+### SELECT attributes
+
+Use `select.distinct [name]` to remove duplicate rows, or
+`select.as: [userId userName] [id name]` for positional aliases.
+Alias counts must match; wildcards cannot have aliases.
+
+`select.expressions` enables structured projections:
+
+```art
+sql [
+    select.expressions.as: [total adjusted] [
+        [count [*]]
+        [+ amount 2]
+    ]
+    from orders
+]
+```
+
+Attributes can combine, including `select.distinct.expressions.as:`.
+Aggregates support `count`, `sum`, `avg`, `min`, and `max` with a
+single argument block; only count accepts a wildcard. Arithmetic uses binary
+prefix blocks with `+`, `-`, `*`, or `/` and supports nesting.
+Scalar values are parameterized; parentheses still evaluate Arturo code once.
+
+### Runnable, self-testing examples
+
+Each example includes assertions and exits with an error if a check fails.
+SQLite examples use an in-memory database and close it after execution.
+
+| Command | Demonstrates |
+| --- | --- |
+| `arturo examples/select.art` | Compilation, captured values, and parameter checks |
+| `arturo examples/sqlite.art` | Execution and terminal tables |
+| `arturo examples/aliases.art` | Positional column aliases |
+| `arturo examples/distinct.art` | Duplicate removal |
+| `arturo examples/aggregates.art` | COUNT, SUM, AVG, MIN, MAX with aliases |
+| `arturo examples/arithmetic.art` | Nested addition, subtraction, multiplication, division |
+| `arturo examples/combined.art` | Combined attributes and captured expression values |
+
+CI runs all these examples alongside the unit specifications.

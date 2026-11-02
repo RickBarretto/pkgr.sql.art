@@ -256,3 +256,32 @@ describe "SQLite execution adapter" [
         unless null? failure [throw to :string failure]
     ]
 ]
+
+describe "SELECT attributes" [
+    it "compiles combined attributes and arithmetic parameters" [
+        compiled: to :sqliteQuery sql [
+            select.expressions.distinct.as: [total adjusted] [[count [*]] [+ amount 2]]
+            from users where [id > 3]
+        ]
+        expects.be: 'equal? @[compiled\params [2 3]]
+        expects.be: 'equal? @[compiled\text {SELECT DISTINCT
+    COUNT(*) AS "total",
+    ("amount" + ?) AS "adjusted"
+FROM
+    "users"
+WHERE
+    "id" > ?}]
+    ]
+    it "rejects malformed projections" [
+        loop [
+            [select.as: [] [id] from users]
+            [select.as: [all] [*] from users]
+            [select.expressions [[sum [*]]] from users]
+            [select.expressions [[+ id]] from users]
+            [select.distinct.distinct [id] from users]
+        ] 'input [
+            failure: try [ignored: sql input]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]

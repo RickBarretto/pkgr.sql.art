@@ -1,0 +1,20 @@
+import relative "../src/lib.art"!
+
+; Run with: arturo examples/arithmetic.art
+; Each example checks its results against an in-memory SQLite database.
+db: open.sqlite ":memory:"
+failure: try [
+    query db "CREATE TABLE orders (amount INTEGER, tax INTEGER)"
+    query db {INSERT INTO orders VALUES (10, 2)}
+    statement: sql [
+        select.expressions.as: [adjusted] [[/ [* [+ amount tax] 3] [- 5 3]]] from orders
+    ]
+    compiled: to :sqliteQuery statement
+    rows: sqliteExecute db compiled
+    ensure -> rows = [["18"]]
+    print compiled\text
+    inspect rows
+]
+close db
+unless null? failure [throw to :string failure]
+print "arithmetic: passed"

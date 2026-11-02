@@ -12,3 +12,7 @@ statement: sql [
 compiled: to :sqliteQuery statement
 print compiled\text
 inspect compiled\params
+
+ensure -> compiled\params = [18 1 20]
+ensure -> contains? compiled\text "SELECT"
+print "select: passed"
