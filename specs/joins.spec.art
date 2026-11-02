@@ -1,0 +1,65 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "Join compilation" [
+    it "quotes qualified names and binds ON parameters before WHERE" [
+        statement: sql [
+            select ['u\id]
+            from.as: 'u 'users
+            join.left.as: 'o 'orders ['u\id = 'o\userId and 'o\active = true]
+            where ['u\id > 2]
+        ]
+        snapshot: new statement
+        compiled: to :sqliteQuery statement
+        expects.be: 'equal? @[compiled\params [1 2]]
+        expects.be: 'equal? @[contains? compiled\text {LEFT JOIN
+    "orders" AS "o"
+ON
+    ("u"."id" = "o"."userId" AND "o"."active" = ?)} true]
+        expects.be: 'equal? @[statement snapshot]
+    ]
+
+    it "rejects incomplete and misplaced joins" [
+        loop [
+            [select ['id] from 'users join 'orders]
+            [select ['id] from 'users join.left.right 'orders ['id = 'id]]
+            [select ['id] from 'users where ['id = 1] join 'orders ['id = 'id]]
+        ] 'input [
+            failure: try [ignored: sql input]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]
+
+describe "Arrow join conditions" [
+    it "matches predicate blocks and stops at subsequent clauses" [
+        arrow: to :sqliteQuery sql [
+            select ['u\id] from.as: 'u 'users
+            join 'orders -> 'u\id = 'orders\userId and 'orders\active = true
+            join.left 'details -> 'orders\id = 'details\orderId
+            where ['u\id > 1] orderBy ['u\id] limit 2
+        ]
+        explicit: to :sqliteQuery sql [
+            select ['u\id] from.as: 'u 'users
+            join 'orders ['u\id = 'orders\userId and 'orders\active = true]
+            join.left 'details ['orders\id = 'details\orderId]
+            where ['u\id > 1] orderBy ['u\id] limit 2
+        ]
+        expects.be: 'equal? @[arrow\text explicit\text]
+        expects.be: 'equal? @[arrow\params explicit\params]
+    ]
+
+    it "requires a complete arrow predicate" [
+        loop [
+            [select ['id] from 'users join 'orders ->]
+            [select ['id] from 'users join 'orders []]
+            [select ['id] from 'users join 'orders -> ['users\id = 'orders\userId]]
+            [select ['id] from 'users join 'orders on ['users\id = 'orders\userId]]
+            [select ['id] from 'users join 'orders -> where ['id = 1]]
+            [select ['id] from 'users join 'orders -> 'id =]
+        ] 'input [
+            failure: try [ignored: sql input]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]

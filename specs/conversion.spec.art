@@ -1,0 +1,82 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "SQLite query conversion" [
+    it "converts a minimal query to the SQLite type" [
+        compiled: to :sqliteQuery sql [
+            select [*]
+            from 'users
+        ]
+        expects.be: 'equal? @[type compiled :sqliteQuery]
+        expected: join.with:"\n" [
+            "SELECT"
+            "    *"
+            "FROM"
+            "    \"users\""
+        ]
+        expects.be: 'equal? @[compiled\text expected]
+        expects.be: 'equal? @[compiled\params []]
+    ]
+
+    it "preserves AND precedence and defaults ordering to ascending" [
+        compiled: to :sqliteQuery sql [
+            select ['id]
+            from 'users
+            where ['id = 1 or 'age > 18 and 'active = false]
+            orderBy ['name 'id desc]
+        ]
+        expected: join.with:"\n" [
+            "SELECT"
+            "    \"id\""
+            "FROM"
+            "    \"users\""
+            "WHERE"
+            "    (\"id\" = ? OR (\"age\" > ? AND \"active\" = ?))"
+            "ORDER BY"
+            "    \"name\" ASC,"
+            "    \"id\" DESC"
+        ]
+        expects.be: 'equal? @[compiled\text expected]
+        expects.be: 'equal? @[compiled\params [1 18 0]]
+    ]
+
+    it "keeps SQL-looking strings in parameters" [
+        compiled: to :sqliteQuery sql [
+            select ['id]
+            from 'users
+            where ['name = {x' OR 1=1 --}]
+        ]
+        expected: join.with:"\n" [
+            "SELECT"
+            "    \"id\""
+            "FROM"
+            "    \"users\""
+            "WHERE"
+            "    \"name\" = ?"
+        ]
+        expects.be: 'equal? @[compiled\text expected]
+        expects.be: 'equal? @[compiled\params [{x' OR 1=1 --}]]
+    ]
+
+    it "preserves the query dictionary and captured values across conversions" [
+        threshold: 18
+        statement: sql [
+            select ['id]
+            from 'users
+            where ['age >= (threshold)]
+        ]
+        snapshot: new statement
+        threshold: 99
+        firstQuery: to :sqliteQuery statement
+        secondQuery: to :sqliteQuery statement
+        expects.be: 'equal? @[statement snapshot]
+        expects.be: 'equal? @[firstQuery\params [18]]
+        expects.be: 'equal? @[secondQuery\params [18]]
+        expects.be: 'equal? @[firstQuery\text secondQuery\text]
+    ]
+
+    it "rejects dictionaries without the query fields" [
+        failure: try [ignored: to :sqliteQuery #[text: "SELECT 1" params: []]]
+        expects.be: 'equal? @[type failure :error]
+    ]
+]

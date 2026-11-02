@@ -1,0 +1,107 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "Literal SQL identifiers" [
+    it "keeps identifiers independent of Arturo bindings" [
+        users: "another_table"
+        id: 99
+        compiled: to :sqliteQuery sql [
+            select ['u\id]
+            from.as: 'u 'users
+            where ['u\id = 1]
+            orderBy ['u\id]
+        ]
+        expects.be: 'equal? @[compiled\params [1]]
+        expects.be: 'equal? @[contains? compiled\text {"users" AS "u"} true]
+        expects.be: 'equal? @[contains? compiled\text {"u"."id"} true]
+    ]
+
+    it "rejects bare keywords in identifier positions" [
+        loop [
+            [select [select] from 'users]
+            [select ['id] from select]
+            [select ['id] from.as: select 'users]
+            [select ['id] from 'users join select -> 'id = 1]
+            [select ['id] from 'users where [select = 1]]
+            [select ['id] from 'users orderBy [select]]
+            [select.as: [select] ['id] from 'users]
+        ] 'input [
+            failure: try [ignored: sql input]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]
+
+describe "Word and literal identifiers" [
+    it "compiles word and path identifiers like their literal equivalents" [
+        words: to :sqliteQuery sql [
+            select.as: [userId] [u\id]
+            from.as: u users
+            join.as: o orders -> u\id = o\userId
+            where [u\active = true]
+            orderBy [u\id]
+        ]
+        literals: to :sqliteQuery sql [
+            select.as: ['userId] ['u\id]
+            from.as: 'u 'users
+            join.as: 'o 'orders -> 'u\id = 'o\userId
+            where ['u\active = true]
+            orderBy ['u\id]
+        ]
+        expects.be: 'equal? @[words\text literals\text]
+        expects.be: 'equal? @[words\params literals\params]
+    ]
+
+    it "allows literal keywords and reserves keyword components in word paths" [
+        compiled: to :sqliteQuery sql [
+            select ['select 'where]
+            from.as: sel 'select
+            where ['and = 1]
+        ]
+        expects.be: 'equal? @[contains? compiled\text {"select" AS "sel"} true]
+        failure: try [ignored: sql [select [u\select] from users]]
+        expects.be: 'equal? @[type failure :error]
+    ]
+]
+
+describe "String and type identifiers" [
+    it "accepts strings and types in identifier positions" [
+        compiled: to :sqliteQuery sql [
+            select.as: ["label" :string] ["name" :integer]
+            from.as: "u" :string
+            join.as: :integer "orders" -> 'u\id = 'integer\userId
+            orderBy ["name" :integer]
+        ]
+        expects.be: 'equal? @[contains? compiled\text {"name" AS "label"} true]
+        expects.be: 'equal? @[contains? compiled\text {"integer" AS "string"} true]
+        expects.be: 'equal? @[contains? compiled\text {"string" AS "u"} true]
+        expects.be: 'equal? @[contains? compiled\text {"orders" AS "integer"} true]
+        expects.be: 'equal? @[compiled\params []]
+    ]
+
+    it "preserves strings as expression and predicate values" [
+        compiled: to :sqliteQuery sql [
+            select.expressions [:integer "hello"]
+            from "select"
+            where [name = "Ada"]
+        ]
+        expects.be: 'equal? @[compiled\params ["hello" "Ada"]]
+        expects.be: 'equal? @[contains? compiled\text {"integer"} true]
+    ]
+]
+
+describe "Custom type identifiers" [
+    it "preserves descriptive custom type names" [
+        define :customers []
+        define :customerId []
+        define :customerName []
+        compiled: to :sqliteQuery sql [
+            select [:customerId :customerName]
+            from :customers
+            orderBy [:customerId]
+        ]
+        expects.be: 'equal? @[contains? compiled\text {"customerId"} true]
+        expects.be: 'equal? @[contains? compiled\text {"customerName"} true]
+        expects.be: 'equal? @[contains? compiled\text {"customers"} true]
+    ]
+]

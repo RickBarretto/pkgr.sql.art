@@ -1,0 +1,108 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "SQL builder" [
+    it "compiles dynamic predicates and pagination" [
+        minimumAge: 18
+        statement: sql [
+            select ['id 'name]
+            from 'users
+            where ['age >= (minimumAge) and 'active = true]
+            orderBy ['name asc]
+            limit 20
+        ]
+        compiled: to :sqliteQuery statement
+        expects.be: 'equal? @[compiled\params [18 1 20]]
+        expected: join.with:"\n" [
+            "SELECT"
+            "    \"id\","
+            "    \"name\""
+            "FROM"
+            "    \"users\""
+            "WHERE"
+            "    (\"age\" >= ? AND \"active\" = ?)"
+            "ORDER BY"
+            "    \"name\" ASC"
+            "LIMIT"
+            "    ?"
+        ]
+        expects.be: 'equal? @[compiled\text expected]
+        expects.be: 'equal? @[compiled to :sqliteQuery statement]
+    ]
+
+    it "preserves nested groups and null tests" [
+        compiled: to :sqliteQuery sql [
+            select [*]
+            from 'users
+            where ['age > 10 and ['active = true or 'role = "admin"]]
+            where ['email is not null]
+        ]
+        expects.be: 'equal? @[compiled\params @[10 1 "admin"]]
+        expected: join.with:"\n" [
+            "SELECT"
+            "    *"
+            "FROM"
+            "    \"users\""
+            "WHERE"
+            "    (\"age\" > ? AND (\"active\" = ? OR \"role\" = ?))"
+            "    AND \"email\" IS NOT NULL"
+        ]
+        expects.be: 'equal? @[compiled\text expected]
+    ]
+]
+
+describe "SQL validation and execution" [
+    it "rejects malformed queries" [
+        loop [
+            [select [] from 'users]
+            [select ['id] from 'users where []]
+            [select ['id] from 'users where ['id = null]]
+            [select ['id] from 'users limit -1]
+            [select ['id] from 'users offset 1]
+            [select ['id] from 'users limit 1 limit 2]
+            [select ['id] from 'users where ['id = 1 and]]
+        ] 'input [
+            failure: try [ignored: sql input]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+
+    it "executes parameterized SQLite queries" [
+        db: open ":memory:"
+        query db {CREATE TABLE users (id INTEGER, age INTEGER, active INTEGER)}
+        query db {INSERT INTO users VALUES (1, 20, 1), (2, 12, 1), (3, 30, 0)}
+        compiled: to :sqliteQuery sql [
+            select ['id]
+            from 'users
+            where ['age >= 18 and 'active = 1]
+        ]
+        rows: query.with: compiled\params db compiled\text
+        expects.be: 'equal? @[size rows 1]
+        close db
+    ]
+
+    it "resolves function-local values and normalizes inequality" [
+        build: $[threshold] -> sql [
+            select [*]
+            from 'users
+            where ['age != (threshold)]
+            limit 0
+            offset 0
+        ]
+        compiled: to :sqliteQuery build 21
+        expects.be: 'equal? @[compiled\params [21 0 0]]
+        expected: join.with:"\n" [
+            "SELECT"
+            "    *"
+            "FROM"
+            "    \"users\""
+            "WHERE"
+            "    \"age\" <> ?"
+            "LIMIT"
+            "    ?"
+            "OFFSET"
+            "    ?"
+        ]
+        expects.be: 'equal? @[compiled\text expected]
+    ]
+]

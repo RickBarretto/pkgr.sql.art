@@ -1,0 +1,43 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "SQLite execution adapter" [
+    it "executes dictionaries and compiled queries with SQLite booleans" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            query db {CREATE TABLE users (id INTEGER, name TEXT, active INTEGER)}
+            query db {INSERT INTO users VALUES (1, 'Ada', 1), (2, 'Bob', 0), (3, 'Cy', 1)}
+            statement: sql [
+                select ['name]
+                from 'users
+                where ['active = true]
+                orderBy ['id]
+                limit 1
+                offset 1
+            ]
+            compiled: to :sqliteQuery statement
+            expects.be: 'equal? @[query.with: compiled\params db compiled\text [["Cy"]]]
+            expects.be: 'equal? @[sqliteExecute db statement [["Cy"]]]
+            expects.be: 'equal? @[sqliteExecute db compiled [["Cy"]]]
+            expects.be: 'equal? @[compiled\params [1 1 1]]
+            inactive: to :sqliteQuery sql [
+                select ['name] from 'users where ['active = false]
+            ]
+            expects.be: 'equal? @[query.with: inactive\params db inactive\text [["Bob"]]]
+            expects.be: 'equal? @[sqliteExecute db sql [
+                    select ['name] from 'users where ['name = {x' OR 1=1 --}]
+                ] []]
+            expects.be: 'equal? @[sqliteExecute db sql [
+                    select ['id] from 'users orderBy ['id]
+                ] [["1"] ["2"] ["3"]]]
+            executionError: try [ignored: sqliteExecute db sql [select [*] from 'missing]]
+            expects.be: 'equal? @[type executionError :error]
+            invalidError: try [ignored: sqliteExecute db "SELECT 1"]
+            expects.be: 'equal? @[type invalidError :error]
+            ; Failed queries leave the caller's connection usable.
+            expects.be: 'equal? @[query db "SELECT 1" [["1"]]]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+]
