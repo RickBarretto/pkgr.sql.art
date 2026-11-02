@@ -45,7 +45,7 @@ Here is the preferred form of usage for each argument:
 
 ## Make application values visible
 
-Use parentheses for Arturo variables and computations. This distinguishes
+Use `@name` for Arturo variables and parentheses for computations. This distinguishes
 application values from SQL column names and captures the value when the
 statement is built.
 
@@ -54,7 +54,7 @@ minimumYear: 2020
 statement: sql [
     from :books
     select [title publishedYear]
-    where [publishedYear >= (minimumYear)]
+    where [publishedYear >= @minimumYear]
 ]
 ```
 

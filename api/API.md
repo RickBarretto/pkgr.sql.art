@@ -12,7 +12,7 @@ minimumYear: 2020
 statement: sql [
     from :books
     select [title publishedYear]
-    where [publishedYear >= (minimumYear)]
+    where [publishedYear >= @minimumYear]
     order.desc 'publishedYear
     limit 10
 ]
@@ -53,7 +53,8 @@ predicates, expressions, assignments and rows. For example, `select "title"`
 selects a column, while `where [title = "River Atlas"]` compares it with a value.
 
 Scalar values are strings, integers, floating-point numbers, booleans or null.
-Ordinary values become bind parameters. Parentheses evaluate Arturo code once
+Ordinary values become bind parameters. Prefix a variable with `@`, such as
+`@maximumYear`, to capture its scalar value. Parentheses evaluate Arturo code once
 when the statement is built, including variables local to the calling function:
 
 ```art

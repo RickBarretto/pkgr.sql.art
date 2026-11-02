@@ -73,7 +73,7 @@ minimumAge: 18
 statement: sql [
     from :users
     select [id name]
-    where [age >= (minimumAge)]
+    where [age >= @minimumAge]
     order 'name
     limit 20
 ]
@@ -83,7 +83,10 @@ print compiled\text
 inspect compiled\params
 ```
 
-Parentheses capture Arturo values when the statement is built. Compilation returns
+Prefix Arturo variables with `@`, such as `@minimumAge` or `@maximumYear`, to
+capture their scalar values when the statement is built. Bare words inside SQL
+blocks name columns; captured values become bind parameters. Parentheses remain
+available for computations, such as `(minimumAge + 1)`. Compilation returns
 SQL in `compiled\text` and bind values in `compiled\params`; it does not execute
 the query. To run it against SQLite, use `sql.query: db statement` with an open
 connection. See [execution and terminal tables](#execution-and-terminal-tables)
@@ -110,7 +113,7 @@ minimumYear: 2020
 statement: sql [
     from :books
     select [title publishedYear]
-    where -> and publishedYear >= (minimumYear) available = true
+    where -> and publishedYear >= @minimumYear available = true
     order.desc 'publishedYear
     order 'title
     limit.skip: 0 20

@@ -7,7 +7,7 @@ minimumAge: 18
 statement: sql [
     select [id name email]
     from users
-    where [age >= (minimumAge) and active = true]
+    where [age >= @minimumAge and active = true]
     orderBy [name asc]
     limit 20
 ]

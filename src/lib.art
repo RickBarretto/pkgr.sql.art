@@ -1,6 +1,6 @@
 import {tabular}!
 
-; SQL blocks are parsed as data; only parenthesized expressions execute.
+; SQL blocks are data; @name captures host variables and parentheses run computations.
 
 _sqlFail: $[message] -> throw message
 
@@ -227,11 +227,24 @@ import ./{parser.art}!
 
 ; Freeze host computations before parsing, including arrow lookahead and nested bodies.
 _sqlFreeze: $[tokens] [
-    map tokens 'token [
-        (:block = type token) ? [_sqlFreeze token] [
-            (:inline = type token) ? [get _sqlValue token 'value] [token]
+    frozen: []
+    state: #[tokens: tokens position: 0]
+    while [state\position < size tokens] [
+        token: _sqlTake state
+        variableMarker: false
+        if :symbol = type token -> variableMarker: "@" = to :string token
+        variableMarker ? [
+            name: _sqlTake state
+            unless :word = type name -> _sqlFail "Expected variable name after @"
+            token: get _sqlValue var name 'value
+        ] [
+            token: (:block = type token) ? [_sqlFreeze token] [
+                (:inline = type token) ? [get _sqlValue token 'value] [token]
+            ]
         ]
+        frozen: append frozen @[token]
     ]
+    frozen
 ]
 
 import ./{validation.art}!

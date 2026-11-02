@@ -17,7 +17,7 @@ failure: try [
     statement: sql [
         from :books
         select [title publishedYear]
-        where -> and publishedYear >= (minimumYear) available = true
+        where -> and publishedYear >= @minimumYear available = true
         order.desc 'publishedYear
         limit 10
     ]

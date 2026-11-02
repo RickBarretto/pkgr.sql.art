@@ -9,7 +9,7 @@ failure: try [
     query db "CREATE TABLE orders (amount INTEGER)"
     query db {INSERT INTO orders VALUES (10), (10), (20)}
     statement: sql [
-        select.distinct.expressions.as: [adjusted] [[+ amount (bonus)]] from orders where [amount < 20]
+        select.distinct.expressions.as: [adjusted] [[+ amount @bonus]] from orders where [amount < 20]
     ]
     compiled: to :sqliteQuery statement
     rows: sqliteExecute db compiled

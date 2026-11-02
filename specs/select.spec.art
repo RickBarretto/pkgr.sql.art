@@ -7,7 +7,7 @@ describe "SQL builder" [
         statement: sql [
             select ['id 'name]
             from 'users
-            where ['age >= (minimumAge) and 'active = true]
+            where ['age >= @minimumAge and 'active = true]
             orderBy ['name asc]
             limit 20
         ]
@@ -85,7 +85,7 @@ describe "SQL validation and execution" [
         build: $[threshold] -> sql [
             select [*]
             from 'users
-            where ['age != (threshold)]
+            where ['age != @threshold]
             limit 0
             offset 0
         ]

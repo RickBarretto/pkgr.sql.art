@@ -76,7 +76,7 @@ failure: try [
     values: sql [
         select.expressions [customerId "hello"]
         from customers
-        where [customerName = (expectedName)]
+        where [customerName = @expectedName]
     ]
     compiled: to :sqliteQuery values
     ensure -> compiled\params = ["hello" "Ada"]

@@ -19,6 +19,31 @@ describe "Function API" [
         expects.be: 'equal? @[contains? compiled\text {"books"} true]
     ]
 
+    it "captures local variables once across nested bodies and value lists" [
+        buildQuery: $[maximumYear] -> sql [
+            from :books select id
+            where -> publishedYear <= @maximumYear
+            where [id in [@maximumYear 1]]
+            limit.skip: @maximumYear @maximumYear
+        ]
+        statement: buildQuery 2024
+        maximumYear: 2030
+        compiled: to :sqliteQuery statement
+        expects.be: 'equal? @[compiled\params [2024 2024 1 2024 2024]]
+        postgres: to :postgresQuery statement
+        expects.be: 'equal? @[postgres\params [2024 2024 1 2024 2024]]
+    ]
+
+    it "rejects missing names and nonscalar variable values" [
+        values: [1 2]
+        loop [[from :books select id where [id = @]]
+              [from :books select id where [id = @1]]
+              [from :books select id where [id = @values]]] 'input [
+            failure: try [ignored: sql input]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+
     it "captures host computations once even during arrow lookahead" [
         counter: #[calls: 0]
         nextValue: $[] [counter\calls: counter\calls + 1 counter\calls]

@@ -63,7 +63,7 @@ describe "SQLite query conversion" [
         statement: sql [
             select ['id]
             from 'users
-            where ['age >= (threshold)]
+            where ['age >= @threshold]
         ]
         snapshot: new statement
         threshold: 99
