@@ -1,4 +1,6 @@
 import relative "../src/lib.art"!
+
+; Prefix arithmetic nests explicitly, preserving grouping in generated SQL.
 ; Run with: arturo examples/arithmetic.art
 ; Each example checks its results against an in-memory SQLite database.
 db: open.sqlite ":memory:"

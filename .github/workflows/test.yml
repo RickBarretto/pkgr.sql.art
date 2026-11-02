@@ -91,3 +91,4 @@ jobs:
                 arturo examples/arithmetic.art
                 arturo examples/combined.art
                 arturo examples/joins.art
+                arturo examples/identifiers.art

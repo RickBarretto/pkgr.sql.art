@@ -1,5 +1,7 @@
 import relative "../src/lib.art"!
 
+; Check inner, left, right, and self-joins with qualified column references.
+
 db: open.sqlite ":memory:"
 
 failure: try [
@@ -9,30 +11,30 @@ failure: try [
     query db "INSERT INTO orders VALUES (1), (3)"
 
     innerStatement: sql [
-        select [u.id]
+        select [u\id]
         from.as: u users
-        join orders -> u.id = orders.userId
+        join orders -> u\id = orders\userId
     ]
 
     leftStatement: sql [
-        select [u.id]
+        select [u\id]
         from.as: u users
-        join.left orders -> u.id = orders.userId
-        orderBy [u.id]
+        join.left orders -> u\id = orders\userId
+        orderBy [u\id]
     ]
 
     rightStatement: sql [
-        select [o.userId]
+        select [o\userId]
         from users
-        join.right.as: o orders -> users.id = o.userId
-        orderBy [o.userId]
+        join.right.as: o orders -> users\id = o\userId
+        orderBy [o\userId]
     ]
 
     selfStatement: sql [
-        select [u.id]
+        select [u\id]
         from.as: u users
-        join.inner.as: v users -> u.id = v.id
-        orderBy [u.id]
+        join.inner.as: v users -> u\id = v\id
+        orderBy [u\id]
     ]
 
     ensure -> (sqliteExecute db innerStatement) = [["1"]]

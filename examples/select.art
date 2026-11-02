@@ -1,5 +1,7 @@
 import relative "../src/lib.art"!
 
+; Compile a query without executing it; values are captured into bound parameters.
+
 minimumAge: 18
 
 statement: sql [

@@ -1,4 +1,6 @@
 import relative "../src/lib.art"!
+
+; Projection aliases map by position and do not change the selected values.
 ; Run with: arturo examples/aliases.art
 ; Each example checks its results against an in-memory SQLite database.
 db: open.sqlite ":memory:"

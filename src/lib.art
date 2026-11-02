@@ -6,7 +6,37 @@ _sqlFail: $[message] -> throw message
 
 _sqlText: $[value] -> to :string value
 
-_sqlIdentifier: $[value] -> #[kind: "identifier" value: to :string value]
+; Paths are stored as SQL components; Arturo does not evaluate identifier tokens.
+_sqlIdentifierText: $[value] [
+    ; Block serialization preserves custom type names; direct conversion yields "object".
+    if :type = type value [
+        return replace replace to :string @[value] "[:" "" "]" ""
+    ]
+    if contains? [:path :pathliteral] type value [
+        return join.with:"." map to :block value 'part -> to :string part
+    ]
+    to :string value
+]
+
+_sqlKeywords: [
+    select from join where orderBy limit offset
+    and or is not null true false asc desc
+    count sum avg min max on
+]
+
+; Bare words and paths may name ordinary identifiers. Explicit forms can name keywords.
+_sqlCheckedName: $[value] [
+    unless contains? [:word :literal :path :pathliteral :string :type] type value -> _sqlFail "Expected SQL identifier"
+    if contains? [:word :path] type value [
+        parts: (:path = type value) ? [to :block value] [@[value]]
+        loop parts 'part [
+            if contains? _sqlKeywords to :word part -> _sqlFail "Keyword identifiers require literals"
+        ]
+    ]
+    _sqlIdentifierText value
+]
+
+_sqlIdentifier: $[value] -> #[kind: "identifier" value: _sqlCheckedName value]
 
 _sqlValue: $[value] [
     if :inline = type value [
@@ -18,7 +48,9 @@ _sqlValue: $[value] [
     _sqlFail "SQL requires a scalar value"
 ]
 
+; In expression contexts, strings are bound values; types and explicit names are identifiers.
 _sqlOperand: $[token] [
+    if contains? [:literal :path :pathliteral :type] type token -> return _sqlIdentifier token
     if :word = type token [
         spelling: to :string token
         if spelling = "true" -> return _sqlValue true
@@ -32,7 +64,9 @@ _sqlOperand: $[token] [
 
 _sqlPeek: $[state] [
     if state\position >= size state\tokens -> return ""
-    to :string get state\tokens state\position
+    token: get state\tokens state\position
+    unless :word = type token -> return ""
+    to :string token
 ]
 
 _sqlTake: $[state] [
@@ -44,25 +78,10 @@ _sqlTake: $[state] [
 
 _sqlReadName: $[state] [
     token: _sqlTake state
-    unless :word = type token -> _sqlFail "Expected identifier"
-    name: to :string token
-    while [state\position < size state\tokens] [
-        nextToken: get state\tokens state\position
-        unless :attribute = type nextToken -> break
-        part: to :string _sqlTake state
-        if empty? part [
-            if "*" <> _sqlText _sqlTake state -> _sqlFail "Expected qualified wildcard"
-            part: "*"
-        ]
-        name: join @[name "." part]
-    ]
-    name
+    _sqlCheckedName token
 ]
 
-_sqlReference: $[state] [
-    if :word = type get state\tokens state\position -> return to :word _sqlReadName state
-    _sqlTake state
-]
+_sqlReference: $[state] -> _sqlTake state
 
 _sqlRelation: $[state isJoin] [
     result: #[table: "" alias: null type: "INNER"]
@@ -76,8 +95,8 @@ _sqlRelation: $[state isJoin] [
         (name = "as") ? [
             unless :attributelabel = type token -> _sqlFail "Alias requires a value"
             alias: _sqlTake state
-            unless :word = type alias -> _sqlFail "Expected alias"
-            result\alias: to :string alias
+            unless contains? [:word :literal :string :type] type alias -> _sqlFail "Expected alias"
+            result\alias: _sqlCheckedName alias
         ] [
             unless and? isJoin contains? ["inner" "left" "right"] name -> _sqlFail "Unknown relation attribute"
             unless :attribute = type token -> _sqlFail "Join type is a flag"
@@ -140,9 +159,9 @@ _sqlPredicate: $[tokens] [
 
 _sqlProjection: $[token] [
     if :inline = type token -> return _sqlValue token
-    if "*" = to :string token -> return #[kind: "wildcard"]
+    if and? :pathliteral <> type token "*" = _sqlIdentifierText token -> return #[kind: "wildcard"]
     unless :block = type token [
-        if and? :word = type token contains? to :string token "*" -> return #[kind: "qualifiedWildcard" value: to :string token]
+        if and? :literal = type token contains? _sqlIdentifierText token "*" -> return #[kind: "qualifiedWildcard" value: to :string token]
         return _sqlOperand token
     ]
     expressionState: #[tokens: token position: 0]
@@ -218,17 +237,18 @@ sql: $[_sqlInput] [
     loop _sqlColumns '_sqlColumn [
         if _sqlExpressions -> _sqlQuery\columns: append _sqlQuery\columns _sqlProjection _sqlColumn
         unless _sqlExpressions [
-            unless or? :word = type _sqlColumn "*" = to :string _sqlColumn -> _sqlFail "Invalid column"
-            _sqlQuery\columns: append _sqlQuery\columns to :string _sqlColumn
+            unless or? contains? [:word :literal :path :pathliteral :string :type] type _sqlColumn "*" = _sqlIdentifierText _sqlColumn -> _sqlFail "Invalid column"
+            _sqlQuery\columns: append _sqlQuery\columns ((_sqlIdentifierText _sqlColumn) = "*") ? ["*"] [_sqlCheckedName _sqlColumn]
         ]
     ]
     if contains? _sqlSeen "as" [
         if (size _sqlQuery\aliases) <> size _sqlQuery\columns -> _sqlFail "Alias count must match projections"
         loop _sqlQuery\aliases '_sqlAlias [
-            unless :word = type _sqlAlias -> _sqlFail "Expected alias identifier"
+            unless contains? [:word :literal :string :type] type _sqlAlias -> _sqlFail "Expected alias identifier"
+            ignoredAlias: _sqlCheckedName _sqlAlias
         ]
         loop _sqlColumns '_sqlColumn [
-            if and? :block <> type _sqlColumn contains? to :string _sqlColumn "*" -> _sqlFail "Cannot alias wildcard"
+            if and? :block <> type _sqlColumn contains? _sqlIdentifierText _sqlColumn "*" -> _sqlFail "Cannot alias wildcard"
         ]
     ]
     if "from" <> _sqlText _sqlTake _sqlState -> _sqlFail "Expected from"
@@ -248,7 +268,7 @@ sql: $[_sqlInput] [
             _sqlCondition: []
             while [_sqlState\position < size _sqlInput] [
                 _sqlNext: get _sqlInput _sqlState\position
-                if and? :word = type _sqlNext contains? ["join" "where" "orderBy" "limit" "offset"] to :string _sqlNext -> break
+                if and? :word = type _sqlNext contains? ["join" "where" "orderBy" "limit" "offset"] _sqlIdentifierText _sqlNext -> break
                 _sqlCondition: append _sqlCondition @[_sqlTake _sqlState]
             ]
         ]
@@ -271,8 +291,7 @@ sql: $[_sqlInput] [
                 if empty? _sqlOrderTokens -> _sqlFail "Empty ordering block"
                 _sqlOrder: #[tokens: _sqlOrderTokens position: 0]
                 while [_sqlOrder\position < size _sqlOrder\tokens] [
-                    _sqlName: to :word _sqlReadName _sqlOrder
-                    unless :word = type _sqlName -> _sqlFail "Expected ordering column"
+                    _sqlName: _sqlReadName _sqlOrder
                     _sqlDirection: "asc"
                     if contains? ["asc" "desc"] _sqlPeek _sqlOrder -> _sqlDirection: _sqlText _sqlTake _sqlOrder
                     _sqlQuery\ordering: append _sqlQuery\ordering #[

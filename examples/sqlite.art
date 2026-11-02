@@ -1,4 +1,6 @@
 import relative "../src/lib.art"!
+
+; Execute a filtered query and render a terminal table; assertions check its rows.
 db: open.sqlite ":memory:"
 
 failure: try [

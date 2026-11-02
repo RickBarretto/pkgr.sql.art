@@ -1,0 +1,88 @@
+import relative "../src/lib.art"!
+
+; Run: arturo examples/identifiers.art
+; Every query below checks its result in an in-memory SQLite database.
+; Clause names are words. Identifier tokens are SQL data, never Arturo lookups.
+
+; Custom types contribute their names, not instances or database type declarations.
+define :customers []
+define :customerId []
+define :customerName []
+
+db: open.sqlite ":memory:"
+failure: try [
+    query db "CREATE TABLE customers (customerId INTEGER, customerName TEXT)"
+    query db {INSERT INTO customers VALUES (1, 'Ada')}
+
+    ; Words: concise names when they do not collide with DSL keywords.
+    words: sql [
+        select [customerId customerName]
+        from customers
+        orderBy [customerId]
+    ]
+
+    ; Literals: explicitly identify tables and columns.
+    literals: sql [
+        select ['customerId 'customerName]
+        from 'customers
+        orderBy ['customerId]
+    ]
+
+    ; Paths: qualify columns through a table alias.
+    paths: sql [
+        select [c\customerId c\customerName]
+        from.as: c customers
+        orderBy [c\customerId]
+    ]
+
+    ; Literal paths: explicitly qualify identifiers without resolving Arturo paths.
+    literalPaths: sql [
+        select ['c\customerId 'c\customerName]
+        from.as: 'c 'customers
+        orderBy ['c\customerId]
+    ]
+
+    ; Strings: identifier names in SELECT, FROM, aliases, and ORDER BY.
+    strings: sql [
+        select.as: ["ID" "Customer"] ["customerId" "customerName"]
+        from.as: "c" "customers"
+        orderBy ["customerId"]
+    ]
+
+    ; Types: use descriptive custom type names as identifiers.
+    types: sql [
+        select [:customerId :customerName]
+        from :customers
+        orderBy [:customerId]
+    ]
+
+    ; All six forms select the same row.
+    loop @[words literals paths literalPaths strings types] 'statement [
+        ensure -> (sqliteExecute db statement) = [["1" "Ada"]]
+    ]
+
+    ; Reserved words need explicit identifiers: 'select and 'where are names here.
+    query db {CREATE TABLE "select" (id INTEGER, "where" TEXT)}
+    query db {INSERT INTO "select" VALUES (1, 'Ada')}
+    keywords: sql [
+        select [sel\id 'sel\where]
+        from.as: sel 'select
+        where [sel\id = 1]
+    ]
+    ensure -> (sqliteExecute db keywords) = [["1" "Ada"]]
+
+    ; Strings in predicates are values. Parentheses also capture values explicitly.
+    expectedName: "Ada"
+    values: sql [
+        select.expressions [customerId "hello"]
+        from customers
+        where [customerName = (expectedName)]
+    ]
+    compiled: to :sqliteQuery values
+    ensure -> compiled\params = ["hello" "Ada"]
+    ensure -> (sqliteExecute db compiled) = [["1" "hello"]]
+]
+; Always close the caller-owned connection, including after a failed assertion.
+close db
+unless null? failure -> throw to :string failure
+print "identifiers: all six forms passed"

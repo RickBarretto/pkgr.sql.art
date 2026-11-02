@@ -1,4 +1,6 @@
 import relative "../src/lib.art"!
+
+; Combine DISTINCT, aliases, expressions, and a captured Arturo value.
 ; Run with: arturo examples/combined.art
 ; Each example checks its results against an in-memory SQLite database.
 bonus: 2

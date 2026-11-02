@@ -9,7 +9,7 @@ describe "Terminal query tables" [
         failure: try [
             query db "CREATE TABLE users (id INTEGER, name TEXT)"
             query db {INSERT INTO users VALUES (1, 'Ada')}
-            statement: sql [select [*] from users]
+            statement: sql [select [*] from 'users]
             expected: join.with:"\n" [
                 "+----+------+"
                 "| ID | Name |"
@@ -21,7 +21,7 @@ describe "Terminal query tables" [
             expects.be: 'equal? @[sqliteTable.header: ["ID" "Name"] db statement expected]
             expects.be: 'equal? @[sqliteTable.header: ["ID" "Name"] db to :sqliteQuery statement expected]
             expects.be: 'equal? @[sqliteTable db statement tabular [["1" "Ada"]]]
-            expects.be: 'equal? @[sqliteTable db sql [select [id] from users where [id = 2]] "No rows."]
+            expects.be: 'equal? @[sqliteTable db sql [select ['id] from 'users where ['id = 2]] "No rows."]
             invalidHeader: try [ignored: sqliteTable.header: ["ID"] db statement]
             expects.be: 'equal? @[type invalidHeader :error]
             expects.be: 'equal? @[query db "SELECT 1" [["1"]]]
@@ -35,10 +35,10 @@ describe "SQL builder" [
     it "compiles dynamic predicates and pagination" [
         minimumAge: 18
         statement: sql [
-            select [id name]
-            from users
-            where [age >= (minimumAge) and active = true]
-            orderBy [name asc]
+            select ['id 'name]
+            from 'users
+            where ['age >= (minimumAge) and 'active = true]
+            orderBy ['name asc]
             limit 20
         ]
         compiled: to :sqliteQuery statement
@@ -63,9 +63,9 @@ describe "SQL builder" [
     it "preserves nested groups and null tests" [
         compiled: to :sqliteQuery sql [
             select [*]
-            from users
-            where [age > 10 and [active = true or role = "admin"]]
-            where [email is not null]
+            from 'users
+            where ['age > 10 and ['active = true or 'role = "admin"]]
+            where ['email is not null]
         ]
         expects.be: 'equal? @[compiled\params @[10 1 "admin"]]
         expected: join.with:"\n" [
@@ -84,13 +84,13 @@ describe "SQL builder" [
 describe "SQL validation and execution" [
     it "rejects malformed queries" [
         loop [
-            [select [] from users]
-            [select [id] from users where []]
-            [select [id] from users where [id = null]]
-            [select [id] from users limit -1]
-            [select [id] from users offset 1]
-            [select [id] from users limit 1 limit 2]
-            [select [id] from users where [id = 1 and]]
+            [select [] from 'users]
+            [select ['id] from 'users where []]
+            [select ['id] from 'users where ['id = null]]
+            [select ['id] from 'users limit -1]
+            [select ['id] from 'users offset 1]
+            [select ['id] from 'users limit 1 limit 2]
+            [select ['id] from 'users where ['id = 1 and]]
         ] 'input [
             failure: try [ignored: sql input]
             expects.be: 'equal? @[type failure :error]
@@ -102,9 +102,9 @@ describe "SQL validation and execution" [
         query db {CREATE TABLE users (id INTEGER, age INTEGER, active INTEGER)}
         query db {INSERT INTO users VALUES (1, 20, 1), (2, 12, 1), (3, 30, 0)}
         compiled: to :sqliteQuery sql [
-            select [id]
-            from users
-            where [age >= 18 and active = 1]
+            select ['id]
+            from 'users
+            where ['age >= 18 and 'active = 1]
         ]
         rows: query.with: compiled\params db compiled\text
         expects.be: 'equal? @[size rows 1]
@@ -114,8 +114,8 @@ describe "SQL validation and execution" [
     it "resolves function-local values and normalizes inequality" [
         build: $[threshold] -> sql [
             select [*]
-            from users
-            where [age != (threshold)]
+            from 'users
+            where ['age != (threshold)]
             limit 0
             offset 0
         ]
@@ -141,7 +141,7 @@ describe "SQLite query conversion" [
     it "converts a minimal query to the SQLite type" [
         compiled: to :sqliteQuery sql [
             select [*]
-            from users
+            from 'users
         ]
         expects.be: 'equal? @[type compiled :sqliteQuery]
         expected: join.with:"\n" [
@@ -156,10 +156,10 @@ describe "SQLite query conversion" [
 
     it "preserves AND precedence and defaults ordering to ascending" [
         compiled: to :sqliteQuery sql [
-            select [id]
-            from users
-            where [id = 1 or age > 18 and active = false]
-            orderBy [name id desc]
+            select ['id]
+            from 'users
+            where ['id = 1 or 'age > 18 and 'active = false]
+            orderBy ['name 'id desc]
         ]
         expected: join.with:"\n" [
             "SELECT"
@@ -178,9 +178,9 @@ describe "SQLite query conversion" [
 
     it "keeps SQL-looking strings in parameters" [
         compiled: to :sqliteQuery sql [
-            select [id]
-            from users
-            where [name = {x' OR 1=1 --}]
+            select ['id]
+            from 'users
+            where ['name = {x' OR 1=1 --}]
         ]
         expected: join.with:"\n" [
             "SELECT"
@@ -197,9 +197,9 @@ describe "SQLite query conversion" [
     it "preserves the query dictionary and captured values across conversions" [
         threshold: 18
         statement: sql [
-            select [id]
-            from users
-            where [age >= (threshold)]
+            select ['id]
+            from 'users
+            where ['age >= (threshold)]
         ]
         snapshot: new statement
         threshold: 99
@@ -224,10 +224,10 @@ describe "SQLite execution adapter" [
             query db {CREATE TABLE users (id INTEGER, name TEXT, active INTEGER)}
             query db {INSERT INTO users VALUES (1, 'Ada', 1), (2, 'Bob', 0), (3, 'Cy', 1)}
             statement: sql [
-                select [name]
-                from users
-                where [active = true]
-                orderBy [id]
+                select ['name]
+                from 'users
+                where ['active = true]
+                orderBy ['id]
                 limit 1
                 offset 1
             ]
@@ -237,16 +237,16 @@ describe "SQLite execution adapter" [
             expects.be: 'equal? @[sqliteExecute db compiled [["Cy"]]]
             expects.be: 'equal? @[compiled\params [1 1 1]]
             inactive: to :sqliteQuery sql [
-                select [name] from users where [active = false]
+                select ['name] from 'users where ['active = false]
             ]
             expects.be: 'equal? @[query.with: inactive\params db inactive\text [["Bob"]]]
             expects.be: 'equal? @[sqliteExecute db sql [
-                    select [name] from users where [name = {x' OR 1=1 --}]
+                    select ['name] from 'users where ['name = {x' OR 1=1 --}]
                 ] []]
             expects.be: 'equal? @[sqliteExecute db sql [
-                    select [id] from users orderBy [id]
+                    select ['id] from 'users orderBy ['id]
                 ] [["1"] ["2"] ["3"]]]
-            executionError: try [ignored: sqliteExecute db sql [select [*] from missing]]
+            executionError: try [ignored: sqliteExecute db sql [select [*] from 'missing]]
             expects.be: 'equal? @[type executionError :error]
             invalidError: try [ignored: sqliteExecute db "SELECT 1"]
             expects.be: 'equal? @[type invalidError :error]
@@ -261,8 +261,8 @@ describe "SQLite execution adapter" [
 describe "SELECT attributes" [
     it "compiles combined attributes and arithmetic parameters" [
         compiled: to :sqliteQuery sql [
-            select.expressions.distinct.as: [total adjusted] [[count [*]] [+ amount 2]]
-            from users where [id > 3]
+            select.expressions.distinct.as: ['total 'adjusted] [[count [*]] [+ 'amount 2]]
+            from 'users where ['id > 3]
         ]
         expects.be: 'equal? @[compiled\params [2 3]]
         expects.be: 'equal? @[compiled\text {SELECT DISTINCT
@@ -276,11 +276,11 @@ WHERE
 
     it "rejects malformed projections" [
         loop [
-            [select.as: [] [id] from users]
-            [select.as: [all] [*] from users]
-            [select.expressions [[sum [*]]] from users]
-            [select.expressions [[+ id]] from users]
-            [select.distinct.distinct [id] from users]
+            [select.as: [] ['id] from 'users]
+            [select.as: ['all] [*] from 'users]
+            [select.expressions [[sum [*]]] from 'users]
+            [select.expressions [[+ 'id]] from 'users]
+            [select.distinct.distinct ['id] from 'users]
         ] 'input [
             failure: try [ignored: sql input]
             expects.be: 'equal? @[type failure :error]
@@ -291,10 +291,10 @@ WHERE
 describe "Join compilation" [
     it "quotes qualified names and binds ON parameters before WHERE" [
         statement: sql [
-            select [u.id]
-            from.as: u users
-            join.left.as: o orders [u.id = o.userId and o.active = true]
-            where [u.id > 2]
+            select ['u\id]
+            from.as: 'u 'users
+            join.left.as: 'o 'orders ['u\id = 'o\userId and 'o\active = true]
+            where ['u\id > 2]
         ]
         snapshot: new statement
         compiled: to :sqliteQuery statement
@@ -308,9 +308,9 @@ ON
 
     it "rejects incomplete and misplaced joins" [
         loop [
-            [select [id] from users join orders]
-            [select [id] from users join.left.right orders [id = id]]
-            [select [id] from users where [id = 1] join orders [id = id]]
+            [select ['id] from 'users join 'orders]
+            [select ['id] from 'users join.left.right 'orders ['id = 'id]]
+            [select ['id] from 'users where ['id = 1] join 'orders ['id = 'id]]
         ] 'input [
             failure: try [ignored: sql input]
             expects.be: 'equal? @[type failure :error]
@@ -321,16 +321,16 @@ ON
 describe "Arrow join conditions" [
     it "matches predicate blocks and stops at subsequent clauses" [
         arrow: to :sqliteQuery sql [
-            select [u.id] from.as: u users
-            join orders -> u.id = orders.userId and orders.active = true
-            join.left details -> orders.id = details.orderId
-            where [u.id > 1] orderBy [u.id] limit 2
+            select ['u\id] from.as: 'u 'users
+            join 'orders -> 'u\id = 'orders\userId and 'orders\active = true
+            join.left 'details -> 'orders\id = 'details\orderId
+            where ['u\id > 1] orderBy ['u\id] limit 2
         ]
         explicit: to :sqliteQuery sql [
-            select [u.id] from.as: u users
-            join orders [u.id = orders.userId and orders.active = true]
-            join.left details [orders.id = details.orderId]
-            where [u.id > 1] orderBy [u.id] limit 2
+            select ['u\id] from.as: 'u 'users
+            join 'orders ['u\id = 'orders\userId and 'orders\active = true]
+            join.left 'details ['orders\id = 'details\orderId]
+            where ['u\id > 1] orderBy ['u\id] limit 2
         ]
         expects.be: 'equal? @[arrow\text explicit\text]
         expects.be: 'equal? @[arrow\params explicit\params]
@@ -338,15 +338,120 @@ describe "Arrow join conditions" [
 
     it "requires a complete arrow predicate" [
         loop [
-            [select [id] from users join orders ->]
-            [select [id] from users join orders []]
-            [select [id] from users join orders -> [users.id = orders.userId]]
-            [select [id] from users join orders on [users.id = orders.userId]]
-            [select [id] from users join orders -> where [id = 1]]
-            [select [id] from users join orders -> id =]
+            [select ['id] from 'users join 'orders ->]
+            [select ['id] from 'users join 'orders []]
+            [select ['id] from 'users join 'orders -> ['users\id = 'orders\userId]]
+            [select ['id] from 'users join 'orders on ['users\id = 'orders\userId]]
+            [select ['id] from 'users join 'orders -> where ['id = 1]]
+            [select ['id] from 'users join 'orders -> 'id =]
         ] 'input [
             failure: try [ignored: sql input]
             expects.be: 'equal? @[type failure :error]
         ]
+    ]
+]
+
+describe "Literal SQL identifiers" [
+    it "keeps identifiers independent of Arturo bindings" [
+        users: "another_table"
+        id: 99
+        compiled: to :sqliteQuery sql [
+            select ['u\id]
+            from.as: 'u 'users
+            where ['u\id = 1]
+            orderBy ['u\id]
+        ]
+        expects.be: 'equal? @[compiled\params [1]]
+        expects.be: 'equal? @[contains? compiled\text {"users" AS "u"} true]
+        expects.be: 'equal? @[contains? compiled\text {"u"."id"} true]
+    ]
+
+    it "rejects bare keywords in identifier positions" [
+        loop [
+            [select [select] from 'users]
+            [select ['id] from select]
+            [select ['id] from.as: select 'users]
+            [select ['id] from 'users join select -> 'id = 1]
+            [select ['id] from 'users where [select = 1]]
+            [select ['id] from 'users orderBy [select]]
+            [select.as: [select] ['id] from 'users]
+        ] 'input [
+            failure: try [ignored: sql input]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]
+
+describe "Word and literal identifiers" [
+    it "compiles word and path identifiers like their literal equivalents" [
+        words: to :sqliteQuery sql [
+            select.as: [userId] [u\id]
+            from.as: u users
+            join.as: o orders -> u\id = o\userId
+            where [u\active = true]
+            orderBy [u\id]
+        ]
+        literals: to :sqliteQuery sql [
+            select.as: ['userId] ['u\id]
+            from.as: 'u 'users
+            join.as: 'o 'orders -> 'u\id = 'o\userId
+            where ['u\active = true]
+            orderBy ['u\id]
+        ]
+        expects.be: 'equal? @[words\text literals\text]
+        expects.be: 'equal? @[words\params literals\params]
+    ]
+
+    it "allows literal keywords and reserves keyword components in word paths" [
+        compiled: to :sqliteQuery sql [
+            select ['select 'where]
+            from.as: sel 'select
+            where ['and = 1]
+        ]
+        expects.be: 'equal? @[contains? compiled\text {"select" AS "sel"} true]
+        failure: try [ignored: sql [select [u\select] from users]]
+        expects.be: 'equal? @[type failure :error]
+    ]
+]
+
+describe "String and type identifiers" [
+    it "accepts strings and types in identifier positions" [
+        compiled: to :sqliteQuery sql [
+            select.as: ["label" :string] ["name" :integer]
+            from.as: "u" :string
+            join.as: :integer "orders" -> 'u\id = 'integer\userId
+            orderBy ["name" :integer]
+        ]
+        expects.be: 'equal? @[contains? compiled\text {"name" AS "label"} true]
+        expects.be: 'equal? @[contains? compiled\text {"integer" AS "string"} true]
+        expects.be: 'equal? @[contains? compiled\text {"string" AS "u"} true]
+        expects.be: 'equal? @[contains? compiled\text {"orders" AS "integer"} true]
+        expects.be: 'equal? @[compiled\params []]
+    ]
+
+    it "preserves strings as expression and predicate values" [
+        compiled: to :sqliteQuery sql [
+            select.expressions [:integer "hello"]
+            from "select"
+            where [name = "Ada"]
+        ]
+        expects.be: 'equal? @[compiled\params ["hello" "Ada"]]
+        expects.be: 'equal? @[contains? compiled\text {"integer"} true]
+    ]
+]
+
+describe "Custom type identifiers" [
+    it "preserves descriptive custom type names" [
+        define :customers []
+        define :customerId []
+        define :customerName []
+        compiled: to :sqliteQuery sql [
+            select [:customerId :customerName]
+            from :customers
+            orderBy [:customerId]
+        ]
+        expects.be: 'equal? @[contains? compiled\text {"customerId"} true]
+        expects.be: 'equal? @[contains? compiled\text {"customerName"} true]
+        expects.be: 'equal? @[contains? compiled\text {"customers"} true]
     ]
 ]

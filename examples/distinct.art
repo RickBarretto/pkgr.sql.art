@@ -1,4 +1,6 @@
 import relative "../src/lib.art"!
+
+; DISTINCT removes duplicate rows before ordering the results.
 ; Run with: arturo examples/distinct.art
 ; Each example checks its results against an in-memory SQLite database.
 db: open.sqlite ":memory:"

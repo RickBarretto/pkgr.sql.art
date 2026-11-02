@@ -123,9 +123,9 @@ optional `limit`, optional `offset`. The last requires a limit. Pagination accep
 nonnegative integers, including zero. Ordering accepts `[name asc id desc]`;
 omitted directions default to ascending.
 
-Columns and tables are bare words; `select [*]` selects all columns. Predicates
+Columns and tables accept words or literals; `select [*]` selects all columns. Predicates
 support `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=`, `is null`, and `is not null`.
-Use explicit null tests rather than `= null`. Bare words represent identifiers;
+Use explicit null tests rather than `= null`. Words and literals represent identifiers;
 strings, numbers, and booleans represent values. Keywords are case-sensitive.
 
 `and` binds more tightly than `or`. Nested blocks group conditions. Repeated
@@ -193,19 +193,18 @@ CI runs all these examples alongside the unit specifications.
 ### Joins
 
 Use `join` or `join.inner`, `join.left`, and `join.right`, each followed
-by a table word and a predicate block, or `-> expression`. Place joins after FROM and before WHERE.
+by a table literal and a predicate block, or `-> expression`. Place joins after FROM and before WHERE.
 
 ```art
 sql [
-    select [u.id o.userId]
+    select [u\id o\userId]
     from.as: u users
-    join.left.as: o orders -> u.id = o.userId
+    join.left.as: o orders -> u\id = o\userId
 ]
 ```
 
 Table aliases use `.as:`; join attributes may appear in either order.
-Qualified identifiers quote each component separately. Qualified wildcards
-such as `u.*` are supported in projections. RIGHT JOIN requires support
+Qualified identifiers quote each component separately. The unqualified wildcard `*` is supported in projections. RIGHT JOIN requires support
 from the SQLite library bundled with Arturo.
 
 Run `arturo examples/joins.art` for self-testing inner, left, right, and
@@ -214,24 +213,90 @@ aliased self-join examples.
 These two forms are equivalent:
 
 ```art
-join orders [u.id = orders.userId]
-join orders -> u.id = orders.userId
+join orders [u\id = orders\userId]
+join orders -> u\id = orders\userId
 ```
 
 For example:
 
 ```art
 sql [
-    select [u.id]
+    select [u\id]
     from.as: u users
-    join orders -> u.id = orders.userId
-    where [u.active = true]
+    join orders -> u\id = orders\userId
+    where [u\active = true]
 ]
 ```
 
 After `->`, the predicate ends at the next `join`, `where`, `orderBy`,
 `limit`, `offset`, or the end of the query. Boolean operators and nested
-predicate blocks are supported. Use `join table [predicate]` when a bare identifier
-has the same name as a clause keyword. The DSL does not accept an `on` clause;
+predicate blocks are supported. A literal identifier such as `'where` remains an identifier even when its
+name matches a clause keyword. The DSL does not accept an `on` clause;
 the compiler emits SQL ON automatically. Do not combine `->` with an outer
 predicate block.
+
+### Identifier syntax
+
+Clause names and expression operators remain words: `select`, `from`,
+`join`, `orderBy`, `count`, `and`, and `asc`.
+Prefer words and paths for ordinary identifiers. Use explicit forms for keyword
+names or when demonstrating a particular identifier type. SQL identifiers accept
+words, literals, paths, literal paths, strings, and types:
+
+```art
+sql [
+    select ['u\id 'u\name]
+    from.as: 'u 'users
+    join 'orders -> 'u\id = 'orders\userId
+    orderBy ['u\name]
+]
+```
+
+Use `users` or `'users` for a table, `id` or `'id` for a column,
+and `.as: u` or `.as: 'u` for a table alias. Paths such as `'u\id` compile as separately quoted SQL
+components (`"u"."id"`). SELECT alias blocks likewise accept words, literals, strings, or types.
+Bare words that match DSL keywords require literal spelling instead. Strings in expressions remain
+bound values; parenthesized expressions still capture Arturo values once.
+
+Words remain SQL data and are never resolved as Arturo variables.
+Use `from.as: sel 'select` for a table named `select`: the bare word is
+reserved, while the literal explicitly denotes an identifier. The same rule
+applies to aliases and columns, including keyword components in word paths.
+Use a literal path such as `'sel\where` when a component is a keyword.
+
+Run `arturo examples/identifiers.art` for a self-testing mixed-syntax example.
+
+All six identifier forms are demonstrated and tested in
+`arturo examples/identifiers.art`:
+
+| Form | Column example | Table example |
+| --- | --- | --- |
+| Word | `customerId` | `customers` |
+| Literal | `'customerId` | `'customers` |
+| Path | `c\customerId` | `main\customers` |
+| Literal path | `'c\customerId` | `'main\customers` |
+| String | `"customerId"` | `"customers"` |
+| Type | `:customerId` | `:customers` |
+
+Define descriptive custom types before using them as identifiers:
+
+```art
+define :customers []
+define :customerId []
+define :customerName []
+
+sql [
+    select.as: ["ID" "Customer"] [:customerId :customerName]
+    from :customers
+    orderBy [:customerId]
+]
+```
+
+Types contribute their names (`:customers` becomes `"customers"`).
+String and type identifiers can name keywords without literal syntax.
+Strings in predicates and `select.expressions` remain bound values;
+use a word, literal, path, or type for an identifier in those contexts.
+Parenthesized strings remain captured values.
+
+The example includes comments explaining each form, aliases, keyword names,
+and value binding. Every query checks its SQLite results.
