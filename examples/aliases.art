@@ -15,5 +15,5 @@ failure: try [
     inspect rows
 ]
 close db
-unless null? failure [throw to :string failure]
+unless null? failure -> throw to :string failure
 print "aliases: passed"

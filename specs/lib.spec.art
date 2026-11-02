@@ -27,7 +27,7 @@ describe "Terminal query tables" [
             expects.be: 'equal? @[query db "SELECT 1" [["1"]]]
         ]
         close db
-        unless null? failure [throw to :string failure]
+        unless null? failure -> throw to :string failure
     ]
 ]
 
@@ -254,7 +254,7 @@ describe "SQLite execution adapter" [
             expects.be: 'equal? @[query db "SELECT 1" [["1"]]]
         ]
         close db
-        unless null? failure [throw to :string failure]
+        unless null? failure -> throw to :string failure
     ]
 ]
 
