@@ -84,7 +84,8 @@ Explicit literals allow identifiers that match DSL keywords.
 Query clauses may appear in any order; the compiler arranges them. Repeated
 `select` calls append projections, repeated `where` and `having` calls combine
 with AND, and repeated `order` calls append sort keys. Each command consumes its
-documented arguments. `->` captures one complete expression.
+documented arguments. `->` captures one complete expression, including single
+commands such as `insert.columns: [title] :books -> row ["River Atlas"]`.
 
 ```art
 sql [
@@ -101,7 +102,9 @@ sql [
 Projections support `.distinct`, `.as:`, `.count`, `.sum`, `.avg`, `.min`, `.max`,
 `.coalesce` and `.nullif`. Composed helpers include aggregates, `coalesce`,
 `nullif` and `choose` with `when`/`otherwise` branches or `.default:`.
-Only COUNT accepts a wildcard. Alias counts must match projections.
+Only COUNT accepts a wildcard. Alias counts must match projections. CASE result
+branches must have compatible scalar types; integers and floating-point values
+may mix, and null is accepted with any result type.
 
 Predicates support comparisons (including `=<`), prefix `and`, `or`, `not`,
 `in`, `between`, `like`, `is null`, and `is not null`. Nested blocks preserve
@@ -146,7 +149,8 @@ INSERT requires explicit columns and matching row widths. UPDATE supports
 `assign` and `.values: [column: value]`; write values may include null.
 `create.view`, `drop.view` and `create.trigger` support stored schema statements.
 SQLite prohibits placeholders in stored definitions: scalar AST values in CHECK,
-views and triggers are rendered as escaped SQL literals. Ordinary queries and
+views and triggers are rendered as escaped SQL literals. Pagination counts in
+stored queries are rendered as nonnegative integers. Ordinary queries and
 writes remain parameterized.
 
 The builder also accepts the reference's FETCH, grouping extensions, ALL/ANY,

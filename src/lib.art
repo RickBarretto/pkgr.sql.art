@@ -44,7 +44,7 @@ _sqlValue: $[value] [
         if 1 <> size results -> _sqlFail "SQL expression must return one value"
         value: first results
     ]
-    if contains? [:integer :floating :string :logical] type value -> return #[kind: "value" value: value]
+    if contains? [:integer :floating :string :logical :null] type value -> return #[kind: "value" value: value]
     _sqlFail "SQL requires a scalar value"
 ]
 
@@ -163,6 +163,8 @@ _sqlAtom: $[state] [
     if operator = "!=" -> operator: "<>"
     if operator = "=<" -> operator: "<="
     right: _sqlExpression state
+    if left\kind = "value" -> if null? left\value -> _sqlFail "Use is null or is not null"
+    if right\kind = "value" -> if null? right\value -> _sqlFail "Use is null or is not null"
     #[kind: "comparison" left: left operator: operator right: right]
 ]
 
@@ -227,7 +229,7 @@ _sqlFreeze: $[tokens] [
     ]
 ]
 
-sql: $[_sqlInput] -> _sqlBuild _sqlFreeze _sqlInput
+sql: $[_sqlInput :block] -> _sqlBuild _sqlFreeze _sqlInput
 
 _sqlQuotePart: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
 
@@ -349,13 +351,15 @@ _sqlCompileSelect: $[data] [
         join @[_sqlQuote order\column " " upper order\direction]
     ]
     unless empty? orders -> output\text: join @[output\text "\nORDER BY\n    " join.with:",\n    " orders]
+    schema: false
+    if key? data 'details -> schema: key? data\details 'schema
     unless null? data\limit [
-        output\text: append output\text "\nLIMIT\n    ?"
-        output\params: append output\params data\limit
+        output\text: join @[output\text "\nLIMIT\n    " schema ? [to :string data\limit] ["?"]]
+        unless schema -> output\params: append output\params data\limit
     ]
     unless null? data\offset [
-        output\text: append output\text "\nOFFSET\n    ?"
-        output\params: append output\params data\offset
+        output\text: join @[output\text "\nOFFSET\n    " schema ? [to :string data\offset] ["?"]]
+        unless schema -> output\params: append output\params data\offset
     ]
     output
 ]

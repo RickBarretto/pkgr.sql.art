@@ -39,16 +39,19 @@ describe "Schema and write API execution" [
             ignored: sqliteExecute db sql [create :books [column.primary id :integer column title :string column available :logical]]
             ignored: sqliteExecute db sql [create :loans [column bookId :integer reference bookId :books id]]
             ignored: sqliteExecute db sql [insert :books [columns [id title available] row [1 "River's Atlas" true]]]
-            viewStatement: sql [create.view :riverBooks [from :books select title where [title = "River's Atlas"]]]
-            compiled: to :sqliteQuery viewStatement
+            viewStatement: sql [create.view :riverBooks [from :books select title where [title = "River's Atlas"] order id limit.skip: 0 1]]
+            capturedCompilation: @[to :sqliteQuery viewStatement]
+            expects.be: 'equal? @[size capturedCompilation 1]
+            compiled: first capturedCompilation
             expects.be: 'equal? @[compiled\params []]
             ignored: sqliteExecute db compiled
             expects.be: 'equal? @[sqliteExecute db sql [from :riverBooks select title] [["River's Atlas"]]]
             ignored: sqliteExecute db sql [create.trigger.after.insert.on: :loans :loanAdded [
-                update :books [assign available false where [id = new\bookId]]
+                update :books -> assign available false
+                update :books [assign title "Borrowed" where [id = new\bookId]]
             ]]
             ignored: sqliteExecute db sql [insert :loans [columns bookId row [1]]]
-            expects.be: 'equal? @[sqliteExecute db sql [from :books select available] [["0"]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :books select [available title]] [["0" "Borrowed"]]]
             ignored: sqliteExecute db sql [drop.view :riverBooks]
         ]
         close db

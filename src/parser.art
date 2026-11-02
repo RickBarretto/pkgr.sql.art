@@ -33,7 +33,10 @@ _sqlExpression: $[state] [
     ]
     if contains? ["query" "all" "any"] name [
         ignored: _sqlTake state
-        if name <> "query" -> return #[kind: "quantified" operator: upper name argument: _sqlExpression state]
+        if name <> "query" [
+            unless "query" = _sqlPeek state -> _sqlFail "Quantified comparison requires query"
+            return #[kind: "quantified" operator: upper name argument: _sqlExpression state]
+        ]
         queryData: _sqlBuild _sqlBody state
         if queryData\kind <> "select" -> _sqlFail "Expected nested select"
         if 1 <> size queryData\columns -> _sqlFail "Scalar subquery requires one projection"
@@ -45,7 +48,7 @@ _sqlExpression: $[state] [
         (name = "coalesce") ? [
             values: _sqlTake state
             unless :block = type values -> _sqlFail "Expected operand block"
-            arguments: map values 'value -> _sqlOperand value
+            arguments: map values 'value -> _sqlExpressionOperand value
             if 2 > size arguments -> _sqlFail "COALESCE requires at least two operands"
         ] [
             arguments: @[_sqlExpression state _sqlExpression state]
@@ -62,7 +65,10 @@ _sqlExpression: $[state] [
         while [body\position < size body\tokens] [
             command: _sqlText _sqlTake body
             case command [
-                "when" [branches: append branches #[predicate: _sqlPredicate _sqlBody body value: _sqlScalar _sqlTake body]]
+                "when" [
+                    unless null? fallback -> unless key? options 'default -> _sqlFail "WHEN cannot follow OTHERWISE"
+                    branches: append branches #[predicate: _sqlPredicate _sqlBody body value: _sqlScalar _sqlTake body]
+                ]
                 "otherwise" [
                     unless null? fallback -> _sqlFail "Duplicate CASE fallback"
                     fallback: _sqlScalar _sqlTake body
@@ -71,10 +77,27 @@ _sqlExpression: $[state] [
             ]
         ]
         if empty? branches -> _sqlFail "CASE requires branches"
+        branchType: null
+        results: map branches 'branch -> branch\value\value
+        unless null? fallback -> results: append results fallback\value
+        loop results 'value [
+            unless null? value [
+                valueType: type value
+                if contains? [:integer :floating] valueType -> valueType: :floating
+                unless null? branchType -> if branchType <> valueType -> _sqlFail "CASE branches require compatible result types"
+                branchType: valueType
+            ]
+        ]
         return #[kind: "choose" branches: branches fallback: fallback]
     ]
     token: _sqlTake state
     if :block = type token -> return _sqlProjection token
+    _sqlExpressionOperand token
+]
+
+_sqlExpressionOperand: $[token] [
+    if :null = type token -> return _sqlScalar token
+    if :word = type token -> if "null" = to :string token -> return _sqlScalar token
     _sqlOperand token
 ]
 
@@ -86,44 +109,93 @@ _sqlScalar: $[token] [
     node
 ]
 
-; Arrow bodies capture exactly one complete command or predicate.
+; Arrow bodies consume one command by its fixed arity, or one predicate.
+_sqlSkipCommand: $[state] [
+    command: _sqlPeek state
+    arity: case command [
+        "from" [1]
+        "select" [1]
+        "order" [1]
+        "orderBy" [1]
+        "group" [1]
+        "limit" [1]
+        "fetch" [1]
+        "offset" [1]
+        "cross" [1]
+        "drop" [1]
+        "truncate" [1]
+        "columns" [1]
+        "row" [1]
+        "remove" [1]
+        "rename" [1]
+        "column" [2]
+        "add" [2]
+        "assign" [2]
+        "reference" [3]
+        any [0]
+    ]
+    bodyCommands: ["sql" "query" "where" "having" "check" "choose" "combine"]
+    namedBodies: ["create" "alter" "insert" "update" "delete" "join" "with" "when"]
+    if and? arity = 0 not? or? contains? bodyCommands command contains? namedBodies command [
+        ignored: _sqlAnd state
+        while ["or" = _sqlPeek state] [ignored: _sqlTake state ignored: _sqlAnd state]
+        return null
+    ]
+    ignored: _sqlTake state
+    ; Owner parsing validates attributes after capture; here only their arity matters.
+    while [state\position < size state\tokens] [
+        attribute: get state\tokens state\position
+        unless contains? [:attribute :attributelabel] type attribute -> break
+        ignored: _sqlTake state
+        if :attributelabel = type attribute -> ignored: _sqlTake state
+    ]
+    if contains? bodyCommands command [ignored: _sqlBody state return null]
+    if contains? namedBodies command [
+        (command = "when") ? [
+            ignored: _sqlBody state
+            ignored: _sqlTake state
+        ] [
+            ignored: _sqlTake state
+            ignored: _sqlBody state
+        ]
+        return null
+    ]
+    if command = "select" [
+        helper: _sqlPeek state
+        if contains? ["count" "sum" "avg" "min" "max" "coalesce" "nullif" "choose"] helper [
+            ignored: _sqlExpression state
+            return null
+        ]
+    ]
+    loop 1..arity 'index -> ignored: _sqlTake state
+    null
+]
+
 _sqlBody: $[state] [
     token: _sqlTake state
     if :block = type token -> return token
     unless "->" = to :string token -> _sqlFail "Expected body block"
     begin: state\position
     probe: #[tokens: state\tokens position: begin]
-    name: _sqlPeek probe
-    (contains? ["and" "or" "not" "exists"] name) ? [
-        ignored: _sqlAnd probe
-            while ["or" = _sqlPeek probe] [ignored: _sqlTake probe ignored: _sqlAnd probe]
-    ] [
-        (contains? ["add" "remove" "rename" "column"] name) ? [
-            ignored: _sqlTake probe
-            ignored: _sqlAttributes probe ["optional" "primary" "unique" "identity"]
-            ignored: _sqlTake probe
-            if contains? ["add" "column"] name -> ignored: _sqlTake probe
-        ] [
-            ignored: _sqlAnd probe
-            while ["or" = _sqlPeek probe] [ignored: _sqlTake probe ignored: _sqlAnd probe]
-        ]
-    ]
+    ignored: _sqlSkipCommand probe
     result: []
     while [state\position < probe\position] [result: append result @[_sqlTake state]]
     result
 ]
 
+_sqlNewQuery: $[] -> #[
+    kind: "select" columns: [] table: "" tableAlias: null joins: []
+    predicates: [] ordering: [] limit: null offset: null distinct: false aliases: []
+    details: #[groups: [] groupMode: "" having: [] fetch: false ctes: []]
+]
+
 _sqlBuild: $[tokens] [
     state: #[tokens: tokens position: 0]
-    result: #[
-        kind: "select" columns: [] table: "" tableAlias: null joins: []
-        predicates: [] ordering: [] limit: null offset: null distinct: false aliases: []
-        details: #[groups: [] groupMode: "" having: [] fetch: false ctes: []]
-    ]
+    result: _sqlNewQuery
     while [state\position < size tokens] [
         command: _sqlText _sqlTake state
         if contains? ["create" "alter" "insert" "update" "delete" "drop" "truncate" "combine"] command [
-            if or? result\table <> "" not? empty? result\columns -> _sqlFail "Cannot mix statements and query clauses"
+            if state\position <> 1 -> _sqlFail "Cannot mix statements and query clauses"
             result: _sqlStatement command state result
             if state\position <> size tokens -> _sqlFail "Expected one statement"
             return result
@@ -159,11 +231,11 @@ _sqlBuild: $[tokens] [
                         "expressions" [columns: map value 'item -> _sqlProjection item]
                         "coalesce" [
                             if 2 > size value -> _sqlFail "COALESCE requires operands"
-                            columns: @[#[kind: "function" operator: "COALESCE" arguments: map value 'item -> _sqlOperand item]]
+                            columns: @[#[kind: "function" operator: "COALESCE" arguments: map value 'item -> _sqlExpressionOperand item]]
                         ]
                         "nullif" [
                             if 2 <> size value -> _sqlFail "NULLIF requires two operands"
-                            columns: @[#[kind: "function" operator: "NULLIF" arguments: map value 'item -> _sqlOperand item]]
+                            columns: @[#[kind: "function" operator: "NULLIF" arguments: map value 'item -> _sqlExpressionOperand item]]
                         ]
                         any [
                             columns: @[_sqlExpression #[tokens: @[to :word mode value] position: 0]]
@@ -216,12 +288,23 @@ _sqlBuild: $[tokens] [
                 if 1 < size options -> _sqlFail "Conflicting grouping modes"
                 unless empty? result\details\groups -> _sqlFail "Duplicate grouping"
                 groupKeys: _sqlTake state
-                result\details\groups: (key? options 'sets) ? [map groupKeys 'groupSet -> _sqlNamesAllowEmpty groupSet] [_sqlNames groupKeys]
+                result\details\groups: (key? options 'sets) ? [
+                    unless :block = type groupKeys -> _sqlFail "Grouping sets require a block"
+                    if empty? groupKeys -> _sqlFail "Grouping sets cannot be empty"
+                    map groupKeys 'groupSet [
+                        unless :block = type groupSet -> _sqlFail "Each grouping set requires a block"
+                        _sqlNamesAllowEmpty groupSet
+                    ]
+                ] [_sqlNames groupKeys]
                 unless empty? options -> result\details\groupMode: first keys options
             ]
             "with" [
                 name: _sqlReadName state
                 nested: _sqlBuild _sqlBody state
+                unless nested\kind = "select" -> _sqlFail "CTE requires a query body"
+                unless empty? result\details\ctes [
+                    loop result\details\ctes 'entry -> if entry\name = name -> _sqlFail "Duplicate CTE name"
+                ]
                 result\details\ctes: append result\details\ctes #[name: name statement: nested]
             ]
             "limit" [
@@ -305,16 +388,23 @@ _sqlStatement: $[command state result] [
     if key? options 'view [
         unless command = "create" -> _sqlFail "view is a create option"
         details\statement: _sqlBuild _sqlBody state
+        unless details\statement\kind = "select" -> _sqlFail "View requires a query body"
         return result
     ]
     body: #[tokens: _sqlBody state position: 0]
     if key? options 'trigger [
+        timings: select ["before" "after"] 'flag -> key? options flag
+        events: select ["insert" "update" "delete"] 'flag -> key? options flag
+        unless and? 1 = size timings 1 = size events -> _sqlFail "Trigger requires one timing and event"
+        unless key? options 'on -> _sqlFail "Trigger requires table"
+        ignored: _sqlCheckedName get options 'on
         details\statements: []
         while [body\position < size body\tokens] [
             action: _sqlText _sqlTake body
             unless contains? ["insert" "update" "delete"] action -> _sqlFail "Expected trigger write"
-            details\statements: append details\statements _sqlStatement action body new result
+            details\statements: append details\statements _sqlStatement action body _sqlNewQuery
         ]
+        if empty? details\statements -> _sqlFail "Empty trigger body"
         return result
     ]
     details\definitions: []

@@ -2,9 +2,13 @@
 _sqlSchemaData: $[value] [
     if :block = type value -> return map value 'item -> _sqlSchemaData item
     if :dictionary = type value [
+        if empty? value -> return new value
         result: #[]
         loop keys value 'name -> set result name _sqlSchemaData get value name
-        if key? result 'kind -> if result\kind = "value" -> result\kind: "schemaValue"
+        if key? result 'kind [
+            if result\kind = "value" -> result\kind: "schemaValue"
+            if result\kind = "select" -> result\details\schema: true
+        ]
         return result
     ]
     value
@@ -24,7 +28,7 @@ _sqlDefinition: $[definition output] [
             case storage [
                 "string" [storage: "TEXT"]
                 "integer" [storage: "INTEGER"]
-            "logical" [storage: "INTEGER"]
+                "logical" [storage: "INTEGER"]
                 "floating" [storage: "REAL"]
                 "binary" [storage: "BLOB"]
                 any -> _sqlFail "Unsupported SQLite storage type"
