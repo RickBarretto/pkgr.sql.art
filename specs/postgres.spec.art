@@ -1,0 +1,165 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "PostgreSQL compilation" [
+    it "selects PostgreSQL by conversion and preserves input and native scalar types" [
+        statement: sql [from :books select [id title] where [available = true] where [id > 2] limit 3]
+        snapshot: new statement
+        compiled: to :postgresQuery statement
+        expects.be: 'equal? @[type compiled :postgresQuery]
+        expects.be: 'equal? @[compiled\params @[true 2 3]]
+        expects.be: 'equal? @[compiled\text {SELECT
+    "id",
+    "title"
+FROM
+    "books"
+WHERE
+    "available" = $1
+    AND "id" > $2
+LIMIT
+    $3}]
+        expects.be: 'equal? @[compiled\statements @[compiled\text]]
+        expects.be: 'equal? @[statement snapshot]
+        expects.be: 'equal? @[compiled to :postgresQuery statement]
+    ]
+
+    it "numbers parameters in CTE, projection, join, nested query and pagination order" [
+        compiled: to :postgresQuery sql [
+            with :recent [from :books select id where [publishedYear > 2020]]
+            from.as: b :recent
+            select nullif b\id 0
+            join.as: peer :books [peer\id = 1]
+            where [b\id > query [from :books select.min id where [available = true]]]
+            order b\id
+            fetch.skip: 2 5
+        ]
+        expects.be: 'equal? @[compiled\params @[2020 0 1 true 2 5]]
+        expects.be: 'equal? @[contains? compiled\text {NULLIF("b"."id", $2)} true]
+        expects.be: 'equal? @[contains? compiled\text {"peer"."id" = $3} true]
+        expects.be: 'equal? @[contains? compiled\text {OFFSET
+    $5 ROWS
+FETCH FIRST
+    $6 ROWS ONLY} true]
+    ]
+
+    it "renders all grouping extensions and quantified comparisons" [
+        rollup: to :postgresQuery sql [from :books select genre select count "*" group.rollup genre]
+        cube: to :postgresQuery sql [from :books select [genre publisherId] group.cube [genre publisherId]]
+        sets: to :postgresQuery sql [from :books select genre select count "*" group.sets [[genre] []]]
+        quantified: to :postgresQuery sql [
+            from.as: b :books select b\id
+            where [b\id > all query [from :books select id where [id > 1]]]
+            where [b\id = any query [from :books select id where [id > 2]]]
+        ]
+        expects.be: 'equal? @[contains? rollup\text {ROLLUP ("genre")} true]
+        expects.be: 'equal? @[contains? cube\text {CUBE ("genre", "publisherId")} true]
+        expects.be: 'equal? @[contains? sets\text {GROUPING SETS (("genre"), ())} true]
+        expects.be: 'equal? @[contains? quantified\text {> ALL (SELECT} true]
+        expects.be: 'equal? @[contains? quantified\text {= ANY (SELECT} true]
+        expects.be: 'equal? @[quantified\params [1 2]]
+    ]
+
+    it "renders PostgreSQL storage, identity and truncate" [
+        compiled: to :postgresQuery sql [create :books [
+            column.identity id :integer
+            column title :string
+            column available :logical
+            column.optional rating :floating
+            column.optional cover :binary
+            check [id > 0]
+        ]]
+        expects.be: 'equal? @[compiled\text {CREATE TABLE "books" (
+    "id" INTEGER GENERATED ALWAYS AS IDENTITY NOT NULL,
+    "title" TEXT NOT NULL,
+    "available" BOOLEAN NOT NULL,
+    "rating" DOUBLE PRECISION,
+    "cover" BYTEA,
+    CHECK ("id" > 0)
+)}]
+        expects.be: 'equal? @[compiled\params []]
+        removed: to :postgresQuery sql [truncate :books]
+        expects.be: 'equal? @[removed\text {TRUNCATE TABLE "books"}]
+        altered: to :postgresQuery sql [alter :books [add.optional subtitle :string remove cover]]
+        expects.be: 'equal? @[altered\text {ALTER TABLE "books" ADD COLUMN "subtitle" TEXT, DROP COLUMN "cover"}]
+    ]
+
+    it "keeps write values bound and view definitions literal" [
+        inserted: to :postgresQuery sql [insert :books [columns [title subtitle available] row ["River's Atlas" null true]]]
+        expects.be: 'equal? @[inserted\params @["River's Atlas" null true]]
+        expects.be: 'equal? @[contains? inserted\text {($1, $2, $3)} true]
+        updated: to :postgresQuery sql [update :books [assign title "Quiet Maps" where [id = 2]]]
+        expects.be: 'equal? @[updated\params ["Quiet Maps" 2]]
+        removed: to :postgresQuery sql [delete :books [where [id = 3]]]
+        expects.be: 'equal? @[removed\params [3]]
+        stored: to :postgresQuery sql [create.view :riverBooks [from :books select title where [title = "River's Atlas"] order id fetch.skip: 1 2]]
+        expects.be: 'equal? @[stored\params []]
+        expects.be: 'equal? @[contains? stored\text {E'River''s Atlas'} true]
+        expects.be: 'equal? @[contains? stored\text {FETCH FIRST
+    2 ROWS ONLY} true]
+    ]
+
+    it "compiles trigger functions and triggers as explicit separate statements" [
+        statement: sql [create.trigger.after.insert.on: :loans :loanAdded [
+            update :books [assign available false where [id = NEW\bookId]]
+            update :books [assign title "$sql_dsl$" where [id = new\bookId]]
+        ]]
+        captured: @[to :postgresQuery statement]
+        expects.be: 'equal? @[size captured 1]
+        compiled: first captured
+        expects.be: 'equal? @[size compiled\statements 2]
+        expects.be: 'equal? @[compiled\params []]
+        expects.be: 'equal? @[contains? compiled\text {LANGUAGE plpgsql AS $sql_dsl_1$} true]
+        expects.be: 'equal? @[contains? compiled\text {"id" = NEW."bookId"} true]
+        expects.be: 'equal? @[contains? compiled\text {RETURN NEW;} true]
+        expects.be: 'equal? @[contains? compiled\text {FOR EACH ROW EXECUTE FUNCTION "sql_trigger_} true]
+        expects.be: 'equal? @[compiled to :postgresQuery statement]
+        other: to :postgresQuery sql [create.trigger.after.insert.on: :otherLoans :loanAdded [delete :archive []]]
+        expects.be: 'equal? @[(first compiled\statements) = (first other\statements) false]
+    ]
+
+    it "keeps set operands and their placeholder numbering independent" [
+        compiled: to :postgresQuery sql [combine.except [
+            sql [from :books select title where [id > 1] order title limit 2]
+            sql [with :b [from :books select title where [id = 3]] from :b select title]
+        ]]
+        expects.be: 'equal? @[compiled\params [1 2 3]]
+        expects.be: 'equal? @[contains? compiled\text {LIMIT
+    $2)
+EXCEPT
+(WITH} true]
+    ]
+
+    it "restores compiler helpers and native functions after success and failure" [
+        originals: map [query select remove when sum min max] 'name -> var name
+        statement: sql [from :books select title where [id > 1]]
+        sqliteBefore: to :sqliteQuery statement
+        ignored: to :postgresQuery statement
+        loop [
+            [create :books [column.identity id :string]]
+            [create :books [column.identity.optional id :integer]]
+            [alter :books [rename :catalog remove title]]
+        ] '_postgresInput [
+            failure: try [ignored: to :postgresQuery sql _postgresInput]
+            expects.be: 'equal? @[type failure :error]
+        ]
+        restored: map [query select remove when sum min max] 'name -> var name
+        expects.be: 'equal? @[originals restored]
+        expects.be: 'equal? @[sqliteBefore to :sqliteQuery statement]
+        loop [_pgValue _pgNode _pgSelect _pgDefinition _pgStatement _pgNames] 'name [
+            expects.be: 'equal? @[key? symbols name false]
+        ]
+    ]
+
+    it "compiles every API catalog example without requiring a database driver" [
+        catalogFiles: select list.recursive "api" 'file -> "art" = last split.by:"." file
+        loop catalogFiles 'file [
+            calls: to :block first split.by:"\n---" read file
+            statements: @[do calls]
+            loop statements 'statement [
+                captured: @[to :postgresQuery statement]
+                expects.be: 'equal? @[size captured 1]
+                expects.be: 'equal? @[type first captured :postgresQuery]
+            ]
+        ]
+    ]
+]

@@ -139,27 +139,29 @@ unchecked until a supported compilation/execution strategy is implemented.
 
 ## PostgreSQL and MySQL compilation proposal
 
-Status: planning only. No PostgreSQL or MySQL compiler or execution adapter has
-been implemented. Public syntax, type names and translation policies remain
-undecided. The names below are candidate spellings, not approved API contracts.
-Implementation and issue creation are deferred until the syntax is defined.
+Status: PostgreSQL compilation is now implemented through `to :postgresQuery`.
+SQLite remains available through `to :sqliteQuery`. PostgreSQL execution adapters
+and MySQL compilation remain future work. MySQL syntax and translation policies
+below are still proposals. No tracking issues have been opened.
 
 
-- [ ] Add compilation-only `:postgresQuery` and `:mysqlQuery` types with `text` and `params`.
-- [ ] Scope dialect helpers locally and preserve SQLite/native functions across success and errors.
-- [ ] Emit PostgreSQL quoted identifiers, numbered placeholders, native scalar parameters, FETCH, grouping extensions, ALL/ANY, identity and TRUNCATE.
+- [x] Add compilation-only `:postgresQuery` with `text`, `params`, and an explicit `statements` list.
+- [ ] Add compilation-only `:mysqlQuery` with `text` and `params`.
+- [x] Scope PostgreSQL helpers locally and preserve SQLite/native functions across success and errors.
+- [x] Emit PostgreSQL quoted identifiers, numbered placeholders, native scalar parameters, FETCH, grouping extensions, ALL/ANY, identity and TRUNCATE.
 - [ ] Emit MySQL quoted identifiers, positional placeholders, LIMIT pagination, rollups, ALL/ANY, AUTO_INCREMENT and TRUNCATE; reject unsupported combinations.
-- [ ] Generate each dialect's schema, views and trigger syntax.
-- [ ] Test nested parameter ordering, catalog compilation, dialect boundaries and immutable input without requiring database drivers.
+- [x] Generate PostgreSQL schema, views and triggers, including separate function/trigger DDL.
+- [ ] Generate MySQL schema, views and trigger syntax.
+- [x] Test PostgreSQL nested parameter ordering, catalog compilation, dialect boundaries and immutable input without requiring database drivers.
 - [ ] Document dialect support and compilation-only usage, run checks sequentially, and commit each verified step.
 
 ### Full feature matrix
 
 SQLite describes the current implementation. PostgreSQL and MySQL 8.4 describe
-proposed compilation targets and database capabilities, not completed package
-support. “Translate” is a proposal that still needs a syntax/policy decision.
+compilation capabilities and proposed MySQL 8.4 capabilities. PostgreSQL output
+is compiler-tested; no PostgreSQL server execution is claimed. “Translate” is a proposal that still needs a syntax/policy decision.
 
-| API feature | SQLite: current | PostgreSQL: proposed | MySQL 8.4: proposed |
+| API feature | SQLite: current | PostgreSQL: compiler implemented | MySQL 8.4: proposed |
 | --- | --- | --- | --- |
 | `select`, appended projections, `.as:` | Supported | Supported | Supported |
 | `select.distinct` | Supported | Supported | Supported |
@@ -209,7 +211,7 @@ support. “Translate” is a proposal that still needs a syntax/policy decision
 
 These spellings must be reviewed alongside the future syntax design.
 
-| Detail | SQLite: implemented | PostgreSQL: candidate | MySQL: candidate |
+| Detail | SQLite: implemented | PostgreSQL: implemented | MySQL: candidate |
 | --- | --- | --- | --- |
 | Query type | `:sqliteQuery` | `:postgresQuery` | `:mysqlQuery` |
 | Output fields | `text`, `params` | `text`, `params` | `text`, `params` |
@@ -223,7 +225,7 @@ execution tests are distinct from compiler tests and must not be claimed until r
 
 ### Decisions to make before implementation or issue creation
 
-- [ ] Define how callers select a dialect and name the compiled query types.
+- [x] Select SQLite or PostgreSQL with `to :sqliteQuery` / `to :postgresQuery`; MySQL naming remains proposed.
 - [ ] Decide whether unsupported features produce errors or use documented translations/emulation.
 - [ ] Decide whether MySQL `fetch` translates to LIMIT/OFFSET or is rejected.
 - [ ] Define identity behavior: PostgreSQL ALWAYS versus BY DEFAULT, MySQL AUTO_INCREMENT indexing requirements, and any SQLite mapping.
@@ -259,3 +261,12 @@ execution tests are distinct from compiler tests and must not be claimed until r
 - [MySQL 8.4 subqueries](https://dev.mysql.com/doc/refman/8.4/en/subqueries.html).
 - [MySQL 8.4 AUTO_INCREMENT](https://dev.mysql.com/doc/refman/8.4/en/example-auto-increment.html).
 - [MySQL 8.4 TRUNCATE](https://dev.mysql.com/doc/refman/8.4/en/truncate-table.html).
+
+### PostgreSQL implementation notes
+
+- `to :postgresQuery statement` returns `text`, native scalar `params`, and `statements`.
+- Parameters are numbered in SQL order across CTEs, projections, joins and nested queries.
+- Trigger compilation emits a function definition and a CREATE TRIGGER command as two statements.
+- Trigger helper names use `sql_trigger_` plus a deterministic SHA1 digest of table and trigger names; no existing function is replaced.
+- Stored definitions inline escaped literals. PostgreSQL trigger dollar-quote delimiters avoid collisions with body content.
+- SQLite continues to reject non-equivalent identity, grouping, quantified comparison and truncate operations.

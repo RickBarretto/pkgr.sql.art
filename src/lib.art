@@ -415,6 +415,21 @@ define :sqliteQuery [
     ]
 ]
 
+import ./{postgres.art}!
+
+define :postgresQuery [
+    init: method [kind columns table predicates ordering limit offset distinct aliases tableAlias joins details] [
+        compiled: _sqlCompilePostgres #[
+            kind: kind columns: columns table: table tableAlias: tableAlias joins: joins
+            predicates: predicates ordering: ordering limit: limit offset: offset
+            distinct: distinct aliases: aliases details: details
+        ]
+        this\text: compiled\text
+        this\params: compiled\params
+        this\statements: compiled\statements
+    ]
+]
+
 ; The caller owns the connection and closes it after use.
 
 sqliteExecute: $[db :database statement] [

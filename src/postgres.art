@@ -1,0 +1,210 @@
+; PostgreSQL compilation owns its helpers and parameter accumulator for one call.
+_sqlCompilePostgres: $[data] [
+    unless :dictionary = type data -> _sqlFail "Expected SQL statement dictionary"
+    unless contains? ["select" "combine" "create" "alter" "drop" "truncate" "insert" "update" "delete"] data\kind -> _sqlFail "Invalid SQL statement kind"
+    ignored: _sqlValidate data
+
+    _pgValue: $[value sink] [
+        if sink\schema [
+            if null? value -> return "NULL"
+            if :logical = type value -> return value ? ["TRUE"] ["FALSE"]
+            if :string = type value [
+                escaped: replace replace value "\\" "\\\\" "'" "''"
+                return join @["E'" escaped "'"]
+            ]
+            return to :string value
+        ]
+        sink\params: append sink\params value
+        join @["$" size sink\params]
+    ]
+
+    _pgNode: $[node sink] [
+        case node\kind [
+            "identifier" [
+                if sink\trigger [
+                    parts: split.by:"." node\value
+                    if 2 = size parts [
+                        if contains? ["new" "old"] lower first parts -> return join @[upper first parts "." _sqlQuotePart last parts]
+                    ]
+                ]
+                return _sqlQuote node\value
+            ]
+            "value" -> return _pgValue node\value sink
+            "schemaValue" [
+                literalSink: #[params: [] schema: true trigger: sink\trigger]
+                return _pgValue node\value literalSink
+            ]
+            "alias" -> return join @[_pgNode node\argument sink " AS " _sqlQuote node\value]
+            "wildcard" -> return "*"
+            "qualifiedWildcard" -> return _sqlQuote node\value
+            "aggregate" -> return join @[node\operator "(" _pgNode node\argument sink ")"]
+            "function" -> return join @[node\operator "(" join.with:", " map node\arguments 'argument -> _pgNode argument sink ")"]
+            "arithmetic" -> return join @["(" _pgNode node\left sink " " node\operator " " _pgNode node\right sink ")"]
+            "comparison" -> return join @[_pgNode node\left sink " " node\operator " " _pgNode node\right sink]
+            "boolean" -> return join @["(" _pgNode node\left sink " " node\operator " " _pgNode node\right sink ")"]
+            "negation" -> return join @["NOT (" _pgNode node\argument sink ")"]
+            "null" -> return join @[_pgNode node\left sink " IS " node\negate ? ["NOT NULL"] ["NULL"]]
+            "in" -> return join @[_pgNode node\left sink " IN (" join.with:", " map node\arguments 'argument -> _pgNode argument sink ")"]
+            "between" -> return join @[_pgNode node\left sink " BETWEEN " _pgNode first node\arguments sink " AND " _pgNode last node\arguments sink]
+            "subquery" -> return join @["(" _pgStatement node\query sink ")"]
+            "quantified" -> return join @[node\operator " " _pgNode node\argument sink]
+            "exists" -> return join @["EXISTS " _pgNode node\argument sink]
+            "choose" [
+                result: "CASE"
+                loop node\branches 'branch [
+                    result: join @[result " WHEN " _pgNode branch\predicate sink " THEN " _pgNode branch\value sink]
+                ]
+                unless null? node\fallback -> result: join @[result " ELSE " _pgNode node\fallback sink]
+                return append result " END"
+            ]
+            any -> _sqlFail "Invalid PostgreSQL expression node"
+        ]
+    ]
+
+    _pgNames: $[names] -> join.with:", " map names 'name -> _sqlQuote name
+
+    _pgSelect: $[statement sink] [
+        details: statement\details
+        entries: map details\ctes 'entry -> join @[_sqlQuote entry\name " AS (\n" _pgStatement entry\statement sink "\n)"]
+        prefix: (empty? entries) ? [""] [join @["WITH " join.with:",\n" entries "\n"]]
+        columns: map statement\columns 'column -> _pgNode column sink
+        result: join @[prefix statement\distinct ? ["SELECT DISTINCT"] ["SELECT"] "\n    " join.with:",\n    " columns "\nFROM\n    " _sqlQuote statement\table]
+        unless null? statement\tableAlias -> result: join @[result " AS " _sqlQuotePart statement\tableAlias]
+        unless empty? statement\joins [
+            loop statement\joins 'relation [
+                result: join @[result "\n" relation\type " JOIN\n    " _sqlQuote relation\table]
+                unless null? relation\alias -> result: join @[result " AS " _sqlQuotePart relation\alias]
+                unless relation\type = "CROSS" -> result: join @[result "\nON\n    " _pgNode relation\predicate sink]
+            ]
+        ]
+        filters: map statement\predicates 'predicate -> _pgNode predicate sink
+        unless empty? filters -> result: join @[result "\nWHERE\n    " join.with:"\n    AND " filters]
+        unless empty? details\groups [
+            grouping: case details\groupMode [
+                "sets" [
+                    sets: map details\groups 'groupSet -> join @["(" _pgNames groupSet ")"]
+                    join @["GROUPING SETS (" join.with:", " sets ")"]
+                ]
+                "rollup" [join @["ROLLUP (" _pgNames details\groups ")"]]
+                "cube" [join @["CUBE (" _pgNames details\groups ")"]]
+                any [_pgNames details\groups]
+            ]
+            result: join @[result "\nGROUP BY\n    " grouping]
+        ]
+        filters: map details\having 'predicate -> _pgNode predicate sink
+        unless empty? filters -> result: join @[result "\nHAVING\n    " join.with:"\n    AND " filters]
+        orders: map statement\ordering 'ordering -> join @[_sqlQuote ordering\column " " upper ordering\direction]
+        unless empty? orders -> result: join @[result "\nORDER BY\n    " join.with:",\n    " orders]
+        details\fetch ? [
+            unless null? statement\offset -> result: join @[result "\nOFFSET\n    " _pgValue statement\offset sink " ROWS"]
+            unless null? statement\limit -> result: join @[result "\nFETCH FIRST\n    " _pgValue statement\limit sink " ROWS ONLY"]
+        ] [
+            unless null? statement\limit -> result: join @[result "\nLIMIT\n    " _pgValue statement\limit sink]
+            unless null? statement\offset -> result: join @[result "\nOFFSET\n    " _pgValue statement\offset sink]
+        ]
+        result
+    ]
+
+    _pgDefinition: $[definition] [
+        case definition\kind [
+            "column" [
+                storage: case definition\storage [
+                    "integer" ["INTEGER"]
+                    "string" ["TEXT"]
+                    "logical" ["BOOLEAN"]
+                    "floating" ["DOUBLE PRECISION"]
+                    "binary" ["BYTEA"]
+                    any -> _sqlFail "Unsupported PostgreSQL storage type"
+                ]
+                flags: definition\flags
+                result: join @[_sqlQuote definition\name " " storage]
+                if key? flags 'identity [
+                    unless definition\storage = "integer" -> _sqlFail "PostgreSQL identity requires an integer column"
+                    if key? flags 'optional -> _sqlFail "PostgreSQL identity cannot be optional"
+                    result: append result " GENERATED ALWAYS AS IDENTITY"
+                ]
+                unless key? flags 'optional -> result: append result " NOT NULL"
+                if key? flags 'primary -> result: append result " PRIMARY KEY"
+                if key? flags 'unique -> result: append result " UNIQUE"
+                return result
+            ]
+            "check" [
+                literalSink: #[params: [] schema: true trigger: false]
+                return join @["CHECK (" _pgNode definition\predicate literalSink ")"]
+            ]
+            "reference" -> return join @["FOREIGN KEY (" _pgNames definition\columns ") REFERENCES " _sqlQuote definition\target " (" _pgNames definition\targets ")"]
+            "remove" -> return join @["DROP COLUMN " _sqlQuote definition\name]
+            "rename" -> return join @["RENAME TO " _sqlQuote definition\name]
+            any -> _sqlFail "Invalid PostgreSQL schema definition"
+        ]
+    ]
+
+    _pgStatement: $[statement sink] [
+        if statement\kind = "select" -> return _pgSelect statement sink
+        details: statement\details
+        options: details\options
+        table: _sqlQuote statement\table
+        case statement\kind [
+            "combine" [
+                operands: map details\queries 'operand -> join @["(" _pgStatement operand sink ")"]
+                return join.with: join @["\n" details\operator "\n"] operands
+            ]
+            "drop" -> return join @["DROP " (key? options 'view) ? ["VIEW "] ["TABLE "] table]
+            "truncate" -> return join @["TRUNCATE TABLE " table]
+            "create" [
+                if key? options 'view [
+                    literalSink: #[params: [] schema: true trigger: false]
+                    return join @["CREATE VIEW " table " AS\n" _pgStatement details\statement literalSink]
+                ]
+                if key? options 'trigger [
+                    if contains? statement\table "." -> _sqlFail "PostgreSQL trigger names must be unqualified"
+                    timing: (key? options 'before) ? ["BEFORE"] ["AFTER"]
+                    event: first select ["insert" "update" "delete"] 'flag -> key? options flag
+                    literalSink: #[params: [] schema: true trigger: true]
+                    writes: map details\statements '_triggerStatement -> _pgStatement _triggerStatement literalSink
+                    body: join @["BEGIN\n" join.with:";\n" writes ";\nRETURN " (event = "delete") ? ["OLD"] ["NEW"] ";\nEND;"]
+                    delimiter: "$sql_dsl$"
+                    suffix: 0
+                    while [contains? body delimiter] [
+                        suffix: suffix + 1
+                        delimiter: join @["$sql_dsl_" suffix "$"]
+                    ]
+                    sourceTable: _sqlCheckedName get options 'on
+                    functionKey: join @[size sourceTable ":" sourceTable ":" statement\table]
+                    functionName: _sqlQuotePart join @["sql_trigger_" digest.sha functionKey]
+                    functionSql: join @["CREATE FUNCTION " functionName "() RETURNS trigger\nLANGUAGE plpgsql AS " delimiter "\n" body "\n" delimiter]
+                    triggerSql: join @["CREATE TRIGGER " table " " timing " " upper event "\nON " _sqlQuote _sqlCheckedName get options 'on "\nFOR EACH ROW EXECUTE FUNCTION " functionName "()"]
+                    sink\statements: @[functionSql triggerSql]
+                    return join.with:";\n" sink\statements
+                ]
+                return join @["CREATE TABLE " table " (\n    " join.with:",\n    " map details\definitions 'definition -> _pgDefinition definition "\n)"]
+            ]
+            "alter" [
+                if 1 <> size details\definitions [
+                    ; RENAME TABLE cannot be combined with other PostgreSQL alterations.
+                    loop details\definitions 'definition -> if definition\kind = "rename" -> _sqlFail "PostgreSQL table rename requires its own statement"
+                ]
+                actions: map details\definitions 'definition -> join @[(definition\kind = "column") ? ["ADD COLUMN "] [""] _pgDefinition definition]
+                return join @["ALTER TABLE " table " " join.with:", " actions]
+            ]
+            "insert" [
+                rows: map details\rows 'row -> join @["(" join.with:", " map row 'value -> _pgNode value sink ")"]
+                return join @["INSERT INTO " table " (" _pgNames details\fields ")\nVALUES\n    " join.with:",\n    " rows]
+            ]
+            "update" [
+                assignments: map details\assignments 'assignment -> join @[_sqlQuote assignment\name " = " _pgNode assignment\value sink]
+                result: join @["UPDATE " table "\nSET\n    " join.with:",\n    " assignments]
+            ]
+            "delete" [result: join @["DELETE\nFROM " table]]
+            any -> _sqlFail "Unsupported PostgreSQL statement kind"
+        ]
+        filters: map statement\predicates 'predicate -> _pgNode predicate sink
+        unless empty? filters -> result: join @[result "\nWHERE\n    " join.with:"\n    AND " filters]
+        result
+    ]
+
+    sink: #[params: [] schema: false trigger: false statements: []]
+    text: _pgStatement data sink
+    statements: (empty? sink\statements) ? [@[text]] [sink\statements]
+    #[text: text params: sink\params statements: statements]
+]
