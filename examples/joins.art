@@ -1,0 +1,25 @@
+import relative "../src/lib.art"!
+
+db: open.sqlite ":memory:"
+failure: try [
+    query db "CREATE TABLE users (id INTEGER)"
+    query db "CREATE TABLE orders (userId INTEGER)"
+    query db "INSERT INTO users VALUES (1), (2)"
+    query db "INSERT INTO orders VALUES (1), (3)"
+    innerStatement: sql [
+        select [u.id]
+        from.as: u users
+        join orders -> u.id = orders.userId
+    ]
+
+    leftStatement: sql [select [u.id] from.as: u users join.left orders [u.id = orders.userId] orderBy [u.id]]
+    rightStatement: sql [select [o.userId] from users join.right.as: o orders [users.id = o.userId] orderBy [o.userId]]
+    selfStatement: sql [select [u.id] from.as: u users join.inner.as: v users [u.id = v.id] orderBy [u.id]]
+    ensure -> (sqliteExecute db innerStatement) = [["1"]]
+    ensure -> (sqliteExecute db leftStatement) = [["1"] ["2"]]
+    ensure -> (sqliteExecute db rightStatement) = [["1"] ["3"]]
+    ensure -> (sqliteExecute db selfStatement) = [["1"] ["2"]]
+]
+close db
+unless null? failure [throw to :string failure]
+print "joins: passed"

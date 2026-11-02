@@ -23,6 +23,7 @@ _sqlOperand: $[token] [
         if spelling = "true" [return _sqlValue true]
         if spelling = "false" [return _sqlValue false]
         if spelling = "null" [_sqlFail "Use is null or is not null"]
+        if contains? spelling "*" [_sqlFail "Wildcard is not a predicate operand"]
         return _sqlIdentifier token
     ]
     _sqlValue token
@@ -40,8 +41,62 @@ _sqlTake: $[state] [
     token
 ]
 
-_sqlAtom: $[state] [
+_sqlReadName: $[state] [
     token: _sqlTake state
+    unless :word = type token [_sqlFail "Expected identifier"]
+    name: to :string token
+    while [state\position < size state\tokens] [
+        nextToken: get state\tokens state\position
+        unless :attribute = type nextToken [break]
+        part: to :string _sqlTake state
+        if empty? part [
+            if "*" <> _sqlText _sqlTake state [_sqlFail "Expected qualified wildcard"]
+            part: "*"
+        ]
+        name: join @[name "." part]
+    ]
+    name
+]
+
+_sqlReference: $[state] [
+    if :word = type get state\tokens state\position [
+        return to :word _sqlReadName state
+    ]
+    _sqlTake state
+]
+
+_sqlRelation: $[state isJoin] [
+    result: #[table: "" alias: null type: "INNER"]
+    seen: []
+    while [state\position < size state\tokens] [
+        token: get state\tokens state\position
+        unless contains? [:attribute :attributelabel] type token [break]
+        name: to :string _sqlTake state
+        if contains? seen name [_sqlFail "Duplicate relation attribute"]
+        seen: append seen name
+        (name = "as") ? [
+            unless :attributelabel = type token [_sqlFail "Alias requires a value"]
+            alias: _sqlTake state
+            unless :word = type alias [_sqlFail "Expected alias"]
+            result\alias: to :string alias
+        ] [
+            unless and? isJoin contains? ["inner" "left" "right"] name [_sqlFail "Unknown relation attribute"]
+            unless :attribute = type token [_sqlFail "Join type is a flag"]
+            if (size seen) > 1 [
+                loop ["inner" "left" "right"] 'other [
+                    if and? other <> name contains? seen other [_sqlFail "Conflicting join types"]
+                ]
+            ]
+            result\type: upper name
+        ]
+    ]
+    result\table: _sqlReadName state
+    if contains? result\table "*" [_sqlFail "Invalid table wildcard"]
+    result
+]
+
+_sqlAtom: $[state] [
+    token: _sqlReference state
     if :block = type token [return _sqlPredicate token]
     left: _sqlOperand token
     operator: _sqlText _sqlTake state
@@ -60,7 +115,7 @@ _sqlAtom: $[state] [
     ]
     unless contains? ["=" "<>" "!=" "<" "<=" ">" ">="] operator [_sqlFail "Unsupported SQL comparison"]
     if operator = "!=" [operator: "<>"]
-    right: _sqlOperand _sqlTake state
+    right: _sqlOperand _sqlReference state
     #[kind: "comparison" left: left operator: operator right: right]
 ]
 
@@ -87,7 +142,18 @@ _sqlPredicate: $[tokens] [
 _sqlProjection: $[token] [
     if :inline = type token [return _sqlValue token]
     if "*" = to :string token [return #[kind: "wildcard"]]
-    unless :block = type token [return _sqlOperand token]
+    unless :block = type token [
+        if and? :word = type token contains? to :string token "*" [
+            return #[kind: "qualifiedWildcard" value: to :string token]
+        ]
+        return _sqlOperand token
+    ]
+    expressionState: #[tokens: token position: 0]
+    normalized: []
+    while [expressionState\position < size expressionState\tokens] [
+        normalized: append normalized @[_sqlReference expressionState]
+    ]
+    token: normalized
     if empty? token [_sqlFail "Empty SQL expression"]
     operator: to :string first token
     if contains? ["+" "-" "*" "/"] operator [
@@ -100,6 +166,7 @@ _sqlProjection: $[token] [
     unless :block = type arguments [_sqlFail "Expected aggregate argument block"]
     if 1 <> size arguments [_sqlFail "Aggregate requires one argument"]
     argument: _sqlProjection first arguments
+    if argument\kind = "qualifiedWildcard" [_sqlFail "Invalid aggregate wildcard"]
     if and? argument\kind = "wildcard" operator <> "count" [_sqlFail "Only count accepts wildcard"]
     #[kind: "aggregate" operator: upper operator argument: argument]
 ]
@@ -145,6 +212,12 @@ sql: $[_sqlInput] [
     _sqlColumns: _sqlTake _sqlState
     unless :block = type _sqlColumns [_sqlFail "Expected column block"]
     if empty? _sqlColumns [_sqlFail "Select requires columns"]
+    _sqlColumnState: #[tokens: _sqlColumns position: 0]
+    _sqlNormalized: []
+    while [_sqlColumnState\position < size _sqlColumns] [
+        _sqlNormalized: append _sqlNormalized @[_sqlReference _sqlColumnState]
+    ]
+    _sqlColumns: _sqlNormalized
     loop _sqlColumns '_sqlColumn [
         if _sqlExpressions [
             _sqlQuery\columns: append _sqlQuery\columns _sqlProjection _sqlColumn
@@ -160,13 +233,35 @@ sql: $[_sqlInput] [
             unless :word = type _sqlAlias [_sqlFail "Expected alias identifier"]
         ]
         loop _sqlColumns '_sqlColumn [
-            if "*" = to :string _sqlColumn [_sqlFail "Cannot alias wildcard"]
+            if and? :block <> type _sqlColumn contains? to :string _sqlColumn "*" [_sqlFail "Cannot alias wildcard"]
         ]
     ]
     if "from" <> _sqlText _sqlTake _sqlState [_sqlFail "Expected from"]
-    _sqlTable: _sqlTake _sqlState
-    unless :word = type _sqlTable [_sqlFail "Expected table identifier"]
-    _sqlQuery\table: to :string _sqlTable
+    _sqlFrom: _sqlRelation _sqlState false
+    _sqlQuery\table: _sqlFrom\table
+    _sqlQuery\tableAlias: _sqlFrom\alias
+    _sqlQuery\joins: []
+    while ["join" = _sqlPeek _sqlState] [
+        ignored: _sqlTake _sqlState
+        _sqlJoin: _sqlRelation _sqlState true
+        _sqlArgument: _sqlTake _sqlState
+        (:block = type _sqlArgument) ? [
+            _sqlCondition: _sqlArgument
+        ] [
+            if "->" <> _sqlText _sqlArgument [_sqlFail "Join requires a predicate block or -> expression"]
+            if _sqlState\position < size _sqlInput [
+                if :block = type get _sqlInput _sqlState\position [_sqlFail "Use join table [predicate] without ->"]
+            ]
+            _sqlCondition: []
+            while [_sqlState\position < size _sqlInput] [
+                _sqlNext: get _sqlInput _sqlState\position
+                if and? :word = type _sqlNext contains? ["join" "where" "orderBy" "limit" "offset"] to :string _sqlNext [break]
+                _sqlCondition: append _sqlCondition @[_sqlTake _sqlState]
+            ]
+        ]
+        _sqlJoin\predicate: _sqlPredicate _sqlCondition
+        _sqlQuery\joins: append _sqlQuery\joins _sqlJoin
+    ]
     _sqlStage: 0
     while [_sqlState\position < size _sqlInput] [
         _sqlClause: _sqlText _sqlTake _sqlState
@@ -183,7 +278,7 @@ sql: $[_sqlInput] [
                 if empty? _sqlOrderTokens [_sqlFail "Empty ordering block"]
                 _sqlOrder: #[tokens: _sqlOrderTokens position: 0]
                 while [_sqlOrder\position < size _sqlOrder\tokens] [
-                    _sqlName: _sqlTake _sqlOrder
+                    _sqlName: to :word _sqlReadName _sqlOrder
                     unless :word = type _sqlName [_sqlFail "Expected ordering column"]
                     _sqlDirection: "asc"
                     if contains? ["asc" "desc"] _sqlPeek _sqlOrder [
@@ -217,11 +312,15 @@ sql: $[_sqlInput] [
     _sqlQuery
 ]
 
-_sqlQuote: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
+_sqlQuotePart: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
+_sqlQuote: $[name] -> join.with:"." map split.by:"." name 'part [
+    (part = "*") ? ["*"] [_sqlQuotePart part]
+]
 
 _sqlRender: $[node output] [
     case node\kind [
         "wildcard" [return "*"]
+        "qualifiedWildcard" [return _sqlQuote node\value]
         "aggregate" [return join @[node\operator "(" _sqlRender node\argument output ")"]]
         "arithmetic" [
             if or? node\left\kind = "wildcard" node\right\kind = "wildcard" [_sqlFail "Wildcard arithmetic is invalid"]
@@ -280,6 +379,16 @@ _sqlCompile: $[data] [
         selectPrefix "\n    " join.with:",\n    " columns
         "\nFROM\n    " _sqlQuote data\table
     ]
+    unless null? data\tableAlias [
+        output\text: join @[output\text " AS " _sqlQuotePart data\tableAlias]
+    ]
+    ignoredJoins: @[loop data\joins 'relation [
+        output\text: join @[output\text "\n" relation\type " JOIN\n    " _sqlQuote relation\table]
+        unless null? relation\alias [
+            output\text: join @[output\text " AS " _sqlQuotePart relation\alias]
+        ]
+        output\text: join @[output\text "\nON\n    " _sqlRender relation\predicate output]
+    ]]
     filters: map data\predicates 'predicate [_sqlRender predicate output]
     unless empty? filters [
         output\text: join @[output\text "\nWHERE\n    " join.with:"\n    AND " filters]
@@ -303,8 +412,10 @@ _sqlCompile: $[data] [
 
 ; Dictionary conversion matches constructor arguments by field name.
 define :sqliteQuery [
-    init: method [kind columns table predicates ordering limit offset distinct aliases] [
+    init: method [kind columns table predicates ordering limit offset distinct aliases tableAlias joins] [
         compiled: _sqlCompile #[
+            tableAlias: tableAlias
+            joins: (null? joins) ? [[]] [joins]
             distinct: distinct
             aliases: aliases
             kind: kind

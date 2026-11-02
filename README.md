@@ -141,7 +141,7 @@ Query dictionaries contain `kind`, `columns`, `table`, `predicates`, `ordering`,
 boolean operations, null tests, identifiers, and bound values. Compilation does
 not mutate these dictionaries.
 
-Joins, aliases, qualified identifiers, aggregates, subqueries, writes, raw SQL,
+Subqueries, writes, raw SQL,
 IN, LIKE, BETWEEN, and NOT groups are outside this initial release.
 
 ## Development
@@ -189,3 +189,49 @@ SQLite examples use an in-memory database and close it after execution.
 | `arturo examples/combined.art` | Combined attributes and captured expression values |
 
 CI runs all these examples alongside the unit specifications.
+
+### Joins
+
+Use `join` or `join.inner`, `join.left`, and `join.right`, each followed
+by a table word and a predicate block, or `-> expression`. Place joins after FROM and before WHERE.
+
+```art
+sql [
+    select [u.id o.userId]
+    from.as: u users
+    join.left.as: o orders -> u.id = o.userId
+]
+```
+
+Table aliases use `.as:`; join attributes may appear in either order.
+Qualified identifiers quote each component separately. Qualified wildcards
+such as `u.*` are supported in projections. RIGHT JOIN requires support
+from the SQLite library bundled with Arturo.
+
+Run `arturo examples/joins.art` for self-testing inner, left, right, and
+aliased self-join examples.
+
+These two forms are equivalent:
+
+```art
+join orders [u.id = orders.userId]
+join orders -> u.id = orders.userId
+```
+
+For example:
+
+```art
+sql [
+    select [u.id]
+    from.as: u users
+    join orders -> u.id = orders.userId
+    where [u.active = true]
+]
+```
+
+After `->`, the predicate ends at the next `join`, `where`, `orderBy`,
+`limit`, `offset`, or the end of the query. Boolean operators and nested
+predicate blocks are supported. Use `join table [predicate]` when a bare identifier
+has the same name as a clause keyword. The DSL does not accept an `on` clause;
+the compiler emits SQL ON automatically. Do not combine `->` with an outer
+predicate block.

@@ -90,3 +90,4 @@ jobs:
                 arturo examples/aggregates.art
                 arturo examples/arithmetic.art
                 arturo examples/combined.art
+                arturo examples/joins.art
