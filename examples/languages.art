@@ -1,0 +1,13 @@
+import ./{data/languages}!
+
+print tabular
+    .header: ["Language" "Since" "Typing"]
+    .padding: 8
+    sql.query: db [
+        from :languages
+        select [name year typing]
+        where [year >= 2000]
+        order.desc 'year
+    ]
+
+close db

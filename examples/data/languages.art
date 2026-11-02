@@ -1,0 +1,22 @@
+import relative "../../src/lib.art"!
+
+db: open.sqlite ":memory:"
+failure: try [
+    ignored: sql.query: db [create :languages [
+        column 'name :string
+        column 'year :integer
+        column 'typing :string
+    ]]
+    ignored: sql.query: db [insert.columns: [name year typing] :languages [
+        row ["Arturo" 2019 "Dynamic"]
+        row ["Rust" 2010 "Static"]
+        row ["Go" 2009 "Static"]
+        row ["Python" 1991 "Dynamic"]
+        row ["Lua" 1993 "Dynamic"]
+    ]]
+
+]
+unless null? failure [
+    close db
+    throw to :string failure
+]

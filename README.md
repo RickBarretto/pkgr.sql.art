@@ -1,7 +1,7 @@
-<h1 align="center">sql</h1>
+<h1 align="center"><i><b>SELECT</b> sql <b>AS</b> "À la Arturo"<b>;</b></i></h1>
 
 <p align="center">
-    <i>An SQL Builder for Arturo</i>
+    <i>Build queries with expression.</i>
     <br><br><br>
     <img
         src=./docs/icons/arturo-light-mode.png#gh-light-mode-only
@@ -19,20 +19,36 @@
 </p>
 
 <p align="center">
-    <a href="https://www.arturo-lang.io"><img src="https://img.shields.io/badge/language-Arturo-6A156B.svg?&style=flat&colorA=000000&colorB=000000" alt="Langukvage: Arturo"/></a>
+    <a href="https://www.arturo-lang.io"><img src="https://img.shields.io/badge/language-Arturo-6A156B.svg?&style=flat&colorA=000000&colorB=000000" alt="Language: Arturo"/></a>
     &nbsp;
     <a href="https://github.com/RickBarretto/pkgr.sql.art/blob/main/LICENSE"><img src="https://img.shields.io/github/license/RickBarretto/pkgr.sql.art?&style=flat&colorA=000000&colorB=000000" alt="License"/></a>
     &nbsp;
     <a href="https://github.com/RickBarretto/pkgr.sql.art/actions"><img src="https://img.shields.io/github/actions/workflow/status/RickBarretto/pkgr.sql.art/test.yml?branch=main&style=flat&colorA=000000&colorB=000000" alt="CI Status"/></a>
 </p>
 
+Build SQL with Arturo blocks, inspect the statement, and compile it for SQLite
+or PostgreSQL. Execute SQLite queries through Arturo's native database connection,
+or pass compiled SQL and parameters to your own driver.
+
+- **Composable queries:** filters, joins, aggregates, subqueries, CTEs and set operations.
+- **Schema and writes:** create and alter tables, insert rows, update, delete, views and triggers.
+- **Parameterized output:** quoted identifiers and separate SQL text and values.
+- **Inspectable statements:** build once and choose the target dialect when compiling.
+
+Requires **Arturo 0.10.0+**. PostgreSQL support generates SQL; execution uses an
+external driver. See [dialect selection](#dialect-selection) for supported features.
+
+[Quick start](#quick-start) · [API reference](api/API.md) ·
+[Examples](examples/) · [Development](#development) · [License](#license)
+
 ## At a Glance
 
 <p align="center">
-    <img alt="At a Glance" width="720"
-    src="./docs/images/"
-    />
+    <img src="./docs/images/terminal.png" width="820" alt="Arturo SQL query filtering programming languages released since 2000, with Arturo, Rust and Go displayed in a tabular terminal table." />
 </p>
+
+Query programming languages with SQLite and format the results with `tabular`.
+Run the complete example with `arturo examples/languages.art`.
 
 ## Installation
 
@@ -40,10 +56,45 @@
 arturo -p install sql
 ```
 
-or
+Then import it in your Arturo script:
 
 ```art
 import {sql}!
+```
+
+## Quick start
+
+Build a query and compile it without opening a database:
+
+```art
+import {sql}!
+
+minimumAge: 18
+statement: sql [
+    from :users
+    select [id name]
+    where [age >= (minimumAge)]
+    order 'name
+    limit 20
+]
+
+compiled: to :sqliteQuery statement
+print compiled\text
+inspect compiled\params
+```
+
+Parentheses capture Arturo values when the statement is built. Compilation returns
+SQL in `compiled\text` and bind values in `compiled\params`; it does not execute
+the query. To run it against SQLite, use `sql.query: db statement` with an open
+connection. See [execution and terminal tables](#execution-and-terminal-tables)
+for a complete example with connection cleanup.
+
+To try the checked-in examples from a local checkout:
+
+```sh
+arturo src/main.art
+arturo examples/sqlite.art
+arturo examples/postgres.art
 ```
 
 ## Documentation
@@ -272,9 +323,23 @@ Optional `.header:` labels must match the result width; empty results return
 
 ## Development
 
-Run `unitt`, `arturo src/main.art`, and the self-testing scripts in `examples/`.
+From the repository root, install the test runner and run the specifications:
+
+```sh
+arturo -p install unitt
+unitt
+```
+
+Use Unitt 3.1.1 or newer and ensure `~/.arturo/packages/bin` is on `PATH`.
+CI runs the suite on Linux, macOS, FreeBSD and Windows.
+
+Run `arturo src/main.art` and the self-testing scripts in `examples/` for usage checks.
 `examples/api.art` demonstrates the function API with an in-memory database.
 The contracts and feature catalog live in `api/`; dialect-specific limitations
 are described above. [TODO.md](TODO.md) tracks each API feature and outstanding
 dialect support. Unitt also constructs every catalog example and checks that each
 `sql` call returns exactly one statement.
+
+## License
+
+Released under the [MIT License](LICENSE).
