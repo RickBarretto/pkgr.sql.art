@@ -1,0 +1,109 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "Composed scalar expressions" [
+    it "composes helpers on both sides of comparisons and in operand lists" [
+        compiled: to :sqliteQuery sql [
+            from :books select title
+            where [coalesce [subtitle title] like "River%"]
+            where [nullif pages 0 > coalesce [minimumPages 10]]
+            where [[coalesce [subtitle title]] is not null]
+            where [pages between [[nullif minimumPages 0] 400]]
+            select coalesce [[nullif subtitle ""] title]
+        ]
+        expects.be: 'equal? @[compiled\params ["" "River%" 0 10 0 400]]
+        expects.be: 'equal? @[contains? compiled\text {NULLIF("pages", ?) > COALESCE("minimumPages", ?)} true]
+        expects.be: 'equal? @[contains? compiled\text {COALESCE("subtitle", "title") IS NOT NULL} true]
+    ]
+
+    it "preserves Arturo arithmetic grouping and parameter order" [
+        compiled: to :sqliteQuery sql [
+            from :books
+            select.as: adjusted + pages 2
+            where [pages + 2 * 3 > 10]
+            where [[pages + 2] * 3 =< 100]
+            where [5 < pages - 1]
+        ]
+        expects.be: 'equal? @[compiled\params [2 2 3 10 2 3 100 5 1]]
+        expects.be: 'equal? @[contains? compiled\text {("pages" + (? * ?)) > ?} true]
+        expects.be: 'equal? @[contains? compiled\text {(("pages" + ?) * ?) <= ?} true]
+    ]
+
+    it "rejects incomplete or adjacent scalar expressions" [
+        loop [
+            [from :books select title where [[nullif title "" extra] = "A"]]
+            [from :books select title where [pages + > 1]]
+            [from :books select title where [coalesce [[pages 2] title] = "A"]]
+        ] '_expressionInput [
+            failure: try [ignored: sql _expressionInput]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]
+
+describe "Reference scope validation" [
+    it "permits local schema names, aliases and explicit outer correlations" [
+        statements: @[
+            sql [from main\books select main\books\title]
+            sql [from.as: b :books select b\title where [exists query [
+                from.as: peer :books select peer\id where [peer\id = b\id]
+            ]]]
+            sql [from.as: b :books select b\title where [exists query [
+                from.as: b :archive select b\id where [b\id > 0]
+            ]]]
+            sql [create.trigger.after.update.on: :books :changed [
+                delete :archive -> where -> id = old\id
+                update :books [assign available false where [id = new\id]]
+            ]]
+        ]
+        expects.be: 'equal? @[size statements 4]
+    ]
+
+    it "rejects undeclared, hidden, leaked and invalid trigger relations" [
+        loop [
+            [from :books select missing\title]
+            [from.as: b :books select books\title]
+            [from :books select title order missing\title]
+            [from :books select genre group missing\genre]
+            [from :books select title where [exists query [from :loans select id where [bookId = books\id]]]]
+            [from.as: b :books select peer\title where [exists query [from.as: peer :books select peer\id]]]
+            [with :b [from :books select outer\title] from.as: outer :books select title]
+            [from.as: b :books join.as: b :loans [b\id = b\bookId] select b\title]
+            [create.trigger.after.insert.on: :books :changed [delete :archive -> where -> id = old\id]]
+            [create.trigger.after.delete.on: :books :changed [delete :archive -> where -> id = new\id]]
+            [update :books [assign title "A" where [id = new\id]]]
+        ] '_scopeInput [
+            failure: try [ignored: sql _scopeInput]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]
+
+describe "Set operand scope" [
+    it "executes ordered, paginated and CTE operands with independent parameters" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            ignored: sqliteExecute db sql [create :books [column id :integer column title :string]]
+            ignored: sqliteExecute db sql [insert :books [columns [id title] row [1 "A"] row [2 "B"] row [3 "C"]]]
+            statement: sql [combine.union [
+                sql [from :books select title order.desc id limit 1]
+                sql [with :firstBooks [from :books select title where [id = 1]] from :firstBooks select title]
+            ]]
+            snapshot: new statement
+            compiled: to :sqliteQuery statement
+            expects.be: 'equal? @[compiled\params [1 1]]
+            expects.be: 'equal? @[sqliteExecute db compiled [["A"] ["C"]]]
+            expects.be: 'equal? @[statement snapshot]
+            expects.be: 'equal? @[sqliteExecute db sql [combine.intersect [
+                sql [from :books select title order id limit 2]
+                sql [from :books select title where [id > 1]]
+            ]] [["B"]]]
+            expects.be: 'equal? @[sqliteExecute db sql [combine.except [
+                sql [from :books select title order id limit 2]
+                sql [from :books select title where [id = 1]]
+            ]] [["B"]]]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+]

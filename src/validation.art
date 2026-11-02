@@ -1,0 +1,114 @@
+; Scope checks operate on constructed data, after clause ordering is known.
+_sqlRelationNames: $[tableName tableAlias] [
+    unless null? tableAlias -> return @[tableAlias]
+    shortName: last split.by:"." tableName
+    (shortName = tableName) ? [@[tableName]] [@[tableName shortName]]
+]
+
+_sqlValidateReference: $[name visible] [
+    parts: split.by:"." name
+    if 2 > size parts -> return null
+    prefixParts: []
+    index: 0
+    loop parts 'part [
+        if index < (size parts) - 1 -> prefixParts: append prefixParts part
+        index: index + 1
+    ]
+    qualifier: join.with:"." prefixParts
+    unless contains? visible qualifier -> _sqlFail join @["Unknown SQL relation or outer alias: " qualifier]
+    null
+]
+
+_sqlValidateNode: $[node visible nestedAliases] [
+    if :block = type node [
+        unless empty? node -> loop node 'item -> ignored: _sqlValidateNode item visible nestedAliases
+        return null
+    ]
+    unless :dictionary = type node -> return null
+    if empty? node -> return null
+    if key? node 'kind [
+        if contains? ["identifier" "qualifiedWildcard"] node\kind [
+            ignored: _sqlValidateReference node\value visible
+            return null
+        ]
+        if node\kind = "subquery" [
+            unless node\query\kind = "select" -> _sqlFail "Subquery requires SELECT"
+            ignored: _sqlValidateStatement node\query nestedAliases []
+            return null
+        ]
+    ]
+    loop keys node 'field -> ignored: _sqlValidateNode get node field visible nestedAliases
+    null
+]
+
+_sqlValidateStatement: $[data outerAliases pseudoRelations] [
+    if data\kind = "select" [
+        localNames: _sqlRelationNames data\table data\tableAlias
+        explicitAliases: []
+        unless null? data\tableAlias -> explicitAliases: append explicitAliases data\tableAlias
+        unless empty? data\joins [
+            loop data\joins 'relation [
+                names: _sqlRelationNames relation\table relation\alias
+                loop names 'name [
+                    if contains? localNames name -> _sqlFail "Duplicate SQL relation name; use distinct aliases"
+                    localNames: append localNames name
+                ]
+                unless null? relation\alias -> explicitAliases: append explicitAliases relation\alias
+            ]
+        ]
+        visible: append append new localNames outerAliases pseudoRelations
+        nestedAliases: append append explicitAliases outerAliases pseudoRelations
+        ignored: _sqlValidateNode data\columns visible nestedAliases
+        ignored: _sqlValidateNode data\predicates visible nestedAliases
+        unless empty? data\joins [
+            loop data\joins 'relation [
+                if key? relation 'predicate -> ignored: _sqlValidateNode relation\predicate visible nestedAliases
+            ]
+        ]
+        unless empty? data\ordering -> loop data\ordering 'ordering -> ignored: _sqlValidateReference ordering\column visible
+        if key? data 'details [
+            ignored: _sqlValidateNode data\details\having visible nestedAliases
+            unless empty? data\details\groups [
+                (data\details\groupMode = "sets") ? [
+                    loop data\details\groups 'groupSet [
+                        unless empty? groupSet -> loop groupSet 'name -> ignored: _sqlValidateReference name visible
+                    ]
+                ] [loop data\details\groups 'name -> ignored: _sqlValidateReference name visible]
+            ]
+            unless empty? data\details\ctes [
+                loop data\details\ctes 'entry -> ignored: _sqlValidateStatement entry\statement [] []
+            ]
+        ]
+        return null
+    ]
+    if data\kind = "combine" [
+        loop data\details\queries 'operand -> ignored: _sqlValidateStatement operand outerAliases pseudoRelations
+        return null
+    ]
+    if data\kind = "create" [
+        options: data\details\options
+        if key? options 'view [
+            ignored: _sqlValidateStatement data\details\statement [] []
+            return null
+        ]
+        if key? options 'trigger [
+            pseudo: []
+            if or? key? options 'insert key? options 'update -> pseudo: append pseudo "new"
+            if or? key? options 'delete key? options 'update -> pseudo: append pseudo "old"
+            ; SQLite also accepts the conventional uppercase pseudo-relations.
+            pseudo: append pseudo map pseudo 'name -> upper name
+            loop data\details\statements 'statement -> ignored: _sqlValidateStatement statement [] pseudo
+            return null
+        ]
+    ]
+    if contains? ["update" "delete"] data\kind [
+        visible: append _sqlRelationNames data\table null pseudoRelations
+        ignored: _sqlValidateNode data\predicates visible pseudoRelations
+    ]
+    null
+]
+
+_sqlValidate: $[statement] [
+    ignored: _sqlValidateStatement statement [] []
+    statement
+]

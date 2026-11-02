@@ -1,0 +1,19 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "API reference catalog" [
+    it "constructs every example as one dictionary per sql call" [
+        catalogFiles: select list.recursive "api" 'file -> "art" = last split.by:"." file
+        expects.be: 'equal? @[empty? catalogFiles false]
+        loop catalogFiles 'file [
+            source: first split.by:"\n---" read file
+            calls: to :block source
+            statements: @[do calls]
+            expectedCount: (size calls) / 2
+            expects.be: 'equal? @[size statements expectedCount]
+            loop statements 'statement [
+                expects.be: 'equal? @[type statement :dictionary]
+            ]
+        ]
+    ]
+]

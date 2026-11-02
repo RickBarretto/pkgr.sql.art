@@ -129,14 +129,19 @@ _sqlAtom: $[state] [
         if "query" <> _sqlText _sqlTake state -> _sqlFail "EXISTS requires query"
         return #[kind: "exists" argument: #[kind: "subquery" query: _sqlBuild _sqlBody state]]
     ]
-    token: _sqlReference state
+    token: get state\tokens state\position
     if :block = type token [
-        ; A grouped scalar expression may be the left side of a comparison.
-        (contains? ["=" "<>" "!=" "<" "<=" "=<" ">" ">="] _sqlPeek state) ? [
-            left: _sqlExpression #[tokens: token position: 0]
-        ] [return _sqlPredicate token]
+        following: state\position + 1
+        scalarGroup: false
+        if following < size state\tokens [
+            nextToken: get state\tokens following
+            if contains? [:word :symbol] type nextToken [
+                scalarGroup: contains? ["=" "<>" "!=" "!" "<" "<=" "=<" ">" ">=" "is" "in" "between" "like" "+" "-" "*" "/"] to :string nextToken
+            ]
+        ]
+        unless scalarGroup [ignored: _sqlTake state return _sqlPredicate token]
     ]
-    unless :block = type token -> left: _sqlOperand token
+    left: _sqlExpression state
     operator: _sqlText _sqlTake state
     if operator = "!" [
         if "=" <> _sqlText _sqlTake state -> _sqlFail "Expected = after !"
@@ -156,7 +161,7 @@ _sqlAtom: $[state] [
         unless :block = type values -> _sqlFail "Expected value list"
         if empty? values -> _sqlFail "Empty predicate value list"
         if and? operator = "between" 2 <> size values -> _sqlFail "BETWEEN requires two values"
-        return #[kind: operator left: left arguments: map values 'value -> _sqlOperand value]
+        return #[kind: operator left: left arguments: map values 'value -> _sqlExpressionOperand value]
     ]
     if operator = "like" -> return #[kind: "comparison" left: left operator: "LIKE" right: _sqlExpression state]
     unless contains? ["=" "<>" "!=" "<" "<=" "=<" ">" ">="] operator -> _sqlFail "Unsupported SQL comparison"
@@ -229,7 +234,9 @@ _sqlFreeze: $[tokens] [
     ]
 ]
 
-sql: $[_sqlInput :block] -> _sqlBuild _sqlFreeze _sqlInput
+import ./{validation.art}!
+
+sql: $[_sqlInput :block] -> _sqlValidate _sqlBuild _sqlFreeze _sqlInput
 
 _sqlQuotePart: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
 

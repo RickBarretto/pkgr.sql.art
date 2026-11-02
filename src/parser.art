@@ -21,7 +21,29 @@ _sqlNames: $[value] [
     map values 'item -> _sqlCheckedName item
 ]
 
+; Arturo arithmetic groups from the right; blocks preserve explicit grouping.
 _sqlExpression: $[state] [
+    node: _sqlPrimary state
+    if contains? ["+" "-" "*" "/"] _sqlPeek state [
+        operator: _sqlText _sqlTake state
+        return #[kind: "arithmetic" operator: operator left: node right: _sqlExpression state]
+    ]
+    node
+]
+
+_sqlExpressionBlock: $[tokens] [
+    state: #[tokens: tokens position: 0]
+    result: _sqlExpression state
+    if state\position <> size tokens -> _sqlFail "Expected one complete scalar expression"
+    result
+]
+
+_sqlPrimary: $[state] [
+    if contains? ["+" "-" "*" "/"] _sqlPeek state [
+        operator: _sqlText _sqlTake state
+        left: _sqlExpression state
+        return #[kind: "arithmetic" operator: operator left: left right: _sqlExpression state]
+    ]
     name: _sqlPeek state
     if contains? ["count" "sum" "avg" "min" "max"] name [
         ignored: _sqlTake state
@@ -91,11 +113,12 @@ _sqlExpression: $[state] [
         return #[kind: "choose" branches: branches fallback: fallback]
     ]
     token: _sqlTake state
-    if :block = type token -> return _sqlProjection token
+    if :block = type token -> return _sqlExpressionBlock token
     _sqlExpressionOperand token
 ]
 
 _sqlExpressionOperand: $[token] [
+    if :block = type token -> return _sqlExpressionBlock token
     if :null = type token -> return _sqlScalar token
     if :word = type token -> if "null" = to :string token -> return _sqlScalar token
     _sqlOperand token
@@ -215,7 +238,7 @@ _sqlBuild: $[tokens] [
                 columns: []
                 (empty? modes) ? [
                     name: _sqlPeek state
-                    (contains? ["count" "sum" "avg" "min" "max" "coalesce" "nullif" "choose"] name) ? [
+                    (contains? ["count" "sum" "avg" "min" "max" "coalesce" "nullif" "choose" "+" "-" "*" "/"] name) ? [
                         columns: @[_sqlExpression state]
                     ] [
                         values: _sqlTake state

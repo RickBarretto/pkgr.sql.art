@@ -49,6 +49,13 @@ _sqlDefinition: $[definition output] [
     ]
 ]
 
+_sqlCompileOperand: $[statement output] [
+    text: _sqlCompileInto statement output
+    isolated: or? not? empty? statement\ordering not? null? statement\limit
+    if key? statement 'details -> if not? empty? statement\details\ctes -> isolated: true
+    isolated ? [join @["SELECT * FROM (\n" text "\n)"]] [text]
+]
+
 _sqlCompile: $[data] [
     unless :dictionary = type data -> _sqlFail "Expected SQL dictionary"
     unless key? data 'kind -> _sqlFail "Missing statement kind"
@@ -70,7 +77,7 @@ _sqlCompile: $[data] [
     table: _sqlQuote data\table
     case data\kind [
         "combine" [
-            output\text: join.with: join @["\n" details\operator "\n"] map details\queries 'statement -> _sqlCompileInto statement output
+            output\text: join.with: join @["\n" details\operator "\n"] map details\queries 'statement -> _sqlCompileOperand statement output
         ]
         "drop" [output\text: join @["DROP " (key? options 'view) ? ["VIEW "] ["TABLE "] table]]
         "truncate" -> _sqlFail "SQLite does not support TRUNCATE; use delete"
