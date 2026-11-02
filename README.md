@@ -43,7 +43,7 @@ SQL text separate from parameter values.
 ## At a glance
 
 <p align="center">
-    <img src="./docs/images/terminal.png" width="820" alt="Arturo SQL query filtering programming languages released since 2000, with Arturo, Rust and Go displayed in a tabular terminal table." />
+    <img src="./docs/images/terminal.png" width="720" alt="Arturo SQL query filtering programming languages released since 2000, with Arturo, Rust and Go displayed in a tabular terminal table." />
 </p>
 
 Try this SQLite example with `arturo examples/languages.art`.
