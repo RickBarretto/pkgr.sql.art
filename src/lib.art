@@ -161,7 +161,10 @@ _sqlRender: $[node output] [
     case node\kind [
         "identifier" [return _sqlQuote node\value]
         "value" [
-            output\params: append output\params node\value
+            ; SQLite binds booleans as integers; Arturo otherwise binds them as text.
+            value: node\value
+            if :logical = type value [value: value ? [1] [0]]
+            output\params: append output\params value
             return "?"
         ]
         "null" [
@@ -233,4 +236,11 @@ define :sqliteQuery [
         this\text: compiled\text
         this\params: compiled\params
     ]
+]
+
+; The caller owns the connection and closes it after use.
+sqliteExecute: $[db :database statement] [
+    if :dictionary = type statement [statement: to :sqliteQuery statement]
+    unless :sqliteQuery = type statement [_sqlFail "Expected SQL query dictionary or sqliteQuery"]
+    query.with: statement\params db statement\text
 ]

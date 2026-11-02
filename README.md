@@ -72,12 +72,31 @@ inspect compiled\params
 `sql` parses the block into an inspectable dictionary. `to :sqliteQuery` converts
 it into a `:sqliteQuery` object with `text` and `params` fields without executing
 SQL. SQL text uses one clause per line with four-space indentation. Identifiers
-are quoted and values use positional `?` parameters. Execute with Arturo's
-database API:
+are quoted and values use positional `?` parameters. Execute on an Arturo SQLite
+connection with the built-in `query`:
 
 ```art
-rows: query.with: compiled\params db compiled\text
+db: open.sqlite ":memory:"
+query db "CREATE TABLE users (id INTEGER, name TEXT, email TEXT, age INTEGER, active INTEGER, role TEXT)"
+query db {INSERT INTO users VALUES (1, 'Ada', 'ada@example.com', 30, 1, 'member')}
+failure: try [
+    rows: query.with: compiled\params db compiled\text
+    inspect rows
+]
+close db
+unless null? failure [throw to :string failure]
 ```
+
+The compiled `text` and `params` fields pass directly to `query.with:`. Boolean
+values compile to SQLite integers (`true` → `1`, `false` → `0`), so parameters
+are ready to bind without further conversion. The query dictionary retains the
+original values. Arturo returns its native block of rows (cells are strings on
+Arturo 0.10.0), and database errors propagate to the caller.
+
+`sqliteExecute db statement` remains a convenience wrapper accepting either a
+query dictionary or a compiled `:sqliteQuery` and calling the same built-in API.
+The caller opens and closes the connection. No external SQLite package is
+required. See `examples/sqlite.art` for a runnable example.
 
 Use `statement` rather than `query` as a variable when using the database API:
 Arturo already defines a function named `query`.
@@ -112,4 +131,5 @@ IN, LIKE, BETWEEN, and NOT groups are outside this initial release.
 
 ## Development
 
-Run `unitt`, `arturo src/main.art`, or `arturo examples/select.art`.
+Run `unitt`, `arturo src/main.art`, or `arturo examples/select.art`, or
+`arturo examples/sqlite.art`.
