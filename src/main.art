@@ -8,7 +8,6 @@ statement: sql [
     orderBy [name asc]
     limit 20
 ]
-
 compiled: to :sqliteQuery statement
 print compiled\text
 inspect compiled\params

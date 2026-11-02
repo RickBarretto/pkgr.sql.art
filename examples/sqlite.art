@@ -1,10 +1,8 @@
 import relative "../src/lib.art"!
-
 db: open.sqlite ":memory:"
 failure: try [
     query db "CREATE TABLE users (id INTEGER, name TEXT, age INTEGER, active INTEGER)"
     query db {INSERT INTO users VALUES (1, 'Ada', 30, 1), (2, 'Bob', 16, 1)}
-
     minimumAge: 18
     statement: sql [
         select [id name]
@@ -16,8 +14,6 @@ failure: try [
     ensure -> (sqliteExecute db compiled) = [["1" "Ada"]]
     print sqliteTable.header: ["ID" "Name"] db compiled
 ]
-
 close db
 unless null? failure [throw to :string failure]
-
 print "sqlite: passed"

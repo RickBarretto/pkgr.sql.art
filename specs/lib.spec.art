@@ -1,5 +1,7 @@
 import {unitt}!
+
 import {src/lib.art}!
+
 
 describe "Terminal query tables" [
     it "renders dictionaries, compiled queries, wildcard columns and empty results" [
@@ -215,7 +217,6 @@ describe "SQLite query conversion" [
     ]
 ]
 
-
 describe "SQLite execution adapter" [
     it "executes dictionaries and compiled queries with SQLite booleans" [
         db: open.sqlite ":memory:"
@@ -240,11 +241,11 @@ describe "SQLite execution adapter" [
             ]
             expects.be: 'equal? @[query.with: inactive\params db inactive\text [["Bob"]]]
             expects.be: 'equal? @[sqliteExecute db sql [
-                select [name] from users where [name = {x' OR 1=1 --}]
-            ] []]
+                    select [name] from users where [name = {x' OR 1=1 --}]
+                ] []]
             expects.be: 'equal? @[sqliteExecute db sql [
-                select [id] from users orderBy [id]
-            ] [["1"] ["2"] ["3"]]]
+                    select [id] from users orderBy [id]
+                ] [["1"] ["2"] ["3"]]]
             executionError: try [ignored: sqliteExecute db sql [select [*] from missing]]
             expects.be: 'equal? @[type executionError :error]
             invalidError: try [ignored: sqliteExecute db "SELECT 1"]
@@ -272,6 +273,7 @@ FROM
 WHERE
     "id" > ?}]
     ]
+
     it "rejects malformed projections" [
         loop [
             [select.as: [] [id] from users]
@@ -303,6 +305,7 @@ ON
     ("u"."id" = "o"."userId" AND "o"."active" = ?)} true]
         expects.be: 'equal? @[statement snapshot]
     ]
+
     it "rejects incomplete and misplaced joins" [
         loop [
             [select [id] from users join orders]
@@ -332,6 +335,7 @@ describe "Arrow join conditions" [
         expects.be: 'equal? @[arrow\text explicit\text]
         expects.be: 'equal? @[arrow\params explicit\params]
     ]
+
     it "requires a complete arrow predicate" [
         loop [
             [select [id] from users join orders ->]

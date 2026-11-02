@@ -1,6 +1,7 @@
 import {tabular}!
 
 ; SQL blocks are parsed as data; only parenthesized expressions execute.
+
 _sqlFail: $[message] -> throw message
 
 _sqlText: $[value] -> to :string value
@@ -80,7 +81,9 @@ _sqlRelation: $[state isJoin] [
             unless :word = type alias [_sqlFail "Expected alias"]
             result\alias: to :string alias
         ] [
-            unless and? isJoin contains? ["inner" "left" "right"] name [_sqlFail "Unknown relation attribute"]
+            unless and? isJoin contains? ["inner" "left" "right"] name [
+                _sqlFail "Unknown relation attribute"
+            ]
             unless :attribute = type token [_sqlFail "Join type is a flag"]
             if (size seen) > 1 [
                 loop ["inner" "left" "right"] 'other [
@@ -113,7 +116,9 @@ _sqlAtom: $[state] [
         if "null" <> _sqlText _sqlTake state [_sqlFail "Expected null after is"]
         return #[kind: "null" left: left negate: negate]
     ]
-    unless contains? ["=" "<>" "!=" "<" "<=" ">" ">="] operator [_sqlFail "Unsupported SQL comparison"]
+    unless contains? ["=" "<>" "!=" "<" "<=" ">" ">="] operator [
+        _sqlFail "Unsupported SQL comparison"
+    ]
     if operator = "!=" [operator: "<>"]
     right: _sqlOperand _sqlReference state
     #[kind: "comparison" left: left operator: operator right: right]
@@ -160,7 +165,9 @@ _sqlProjection: $[token] [
         if 3 <> size token [_sqlFail "Arithmetic requires two operands"]
         return #[kind: "arithmetic" operator: operator left: _sqlProjection get token 1 right: _sqlProjection get token 2]
     ]
-    unless contains? ["count" "sum" "avg" "min" "max"] operator [_sqlFail "Unsupported SQL expression"]
+    unless contains? ["count" "sum" "avg" "min" "max"] operator [
+        _sqlFail "Unsupported SQL expression"
+    ]
     if 2 <> size token [_sqlFail "Aggregate requires one argument block"]
     arguments: get token 1
     unless :block = type arguments [_sqlFail "Expected aggregate argument block"]
@@ -223,17 +230,21 @@ sql: $[_sqlInput] [
             _sqlQuery\columns: append _sqlQuery\columns _sqlProjection _sqlColumn
         ]
         unless _sqlExpressions [
-        unless or? :word = type _sqlColumn "*" = to :string _sqlColumn [_sqlFail "Invalid column"]
-        _sqlQuery\columns: append _sqlQuery\columns to :string _sqlColumn
-    ]
+            unless or? :word = type _sqlColumn "*" = to :string _sqlColumn [_sqlFail "Invalid column"]
+            _sqlQuery\columns: append _sqlQuery\columns to :string _sqlColumn
+        ]
     ]
     if contains? _sqlSeen "as" [
-        if (size _sqlQuery\aliases) <> size _sqlQuery\columns [_sqlFail "Alias count must match projections"]
+        if (size _sqlQuery\aliases) <> size _sqlQuery\columns [
+            _sqlFail "Alias count must match projections"
+        ]
         loop _sqlQuery\aliases '_sqlAlias [
             unless :word = type _sqlAlias [_sqlFail "Expected alias identifier"]
         ]
         loop _sqlColumns '_sqlColumn [
-            if and? :block <> type _sqlColumn contains? to :string _sqlColumn "*" [_sqlFail "Cannot alias wildcard"]
+            if and? :block <> type _sqlColumn contains? to :string _sqlColumn "*" [
+                _sqlFail "Cannot alias wildcard"
+            ]
         ]
     ]
     if "from" <> _sqlText _sqlTake _sqlState [_sqlFail "Expected from"]
@@ -248,14 +259,18 @@ sql: $[_sqlInput] [
         (:block = type _sqlArgument) ? [
             _sqlCondition: _sqlArgument
         ] [
-            if "->" <> _sqlText _sqlArgument [_sqlFail "Join requires a predicate block or -> expression"]
+            if "->" <> _sqlText _sqlArgument [
+                _sqlFail "Join requires a predicate block or -> expression"
+            ]
             if _sqlState\position < size _sqlInput [
                 if :block = type get _sqlInput _sqlState\position [_sqlFail "Use join table [predicate] without ->"]
             ]
             _sqlCondition: []
             while [_sqlState\position < size _sqlInput] [
                 _sqlNext: get _sqlInput _sqlState\position
-                if and? :word = type _sqlNext contains? ["join" "where" "orderBy" "limit" "offset"] to :string _sqlNext [break]
+                if and? :word = type _sqlNext contains? ["join" "where" "orderBy" "limit" "offset"] to :string _sqlNext [
+                    break
+                ]
                 _sqlCondition: append _sqlCondition @[_sqlTake _sqlState]
             ]
         ]
@@ -313,6 +328,7 @@ sql: $[_sqlInput] [
 ]
 
 _sqlQuotePart: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
+
 _sqlQuote: $[name] -> join.with:"." map split.by:"." name 'part [
     (part = "*") ? ["*"] [_sqlQuotePart part]
 ]
@@ -323,7 +339,9 @@ _sqlRender: $[node output] [
         "qualifiedWildcard" [return _sqlQuote node\value]
         "aggregate" [return join @[node\operator "(" _sqlRender node\argument output ")"]]
         "arithmetic" [
-            if or? node\left\kind = "wildcard" node\right\kind = "wildcard" [_sqlFail "Wildcard arithmetic is invalid"]
+            if or? node\left\kind = "wildcard" node\right\kind = "wildcard" [
+                _sqlFail "Wildcard arithmetic is invalid"
+            ]
             return join @["(" _sqlRender node\left output " " node\operator " " _sqlRender node\right output ")"]
         ]
         "identifier" [return _sqlQuote node\value]
@@ -365,13 +383,14 @@ _sqlCompile: $[data] [
             (column = "*") ? ["*"] [_sqlQuote column]
         ]
     ]
-    ignoredAliases: @[if key? data 'aliases [
-        index: 0
-        loop data\aliases 'columnAlias [
-            set columns index join @[get columns index " AS " _sqlQuote to :string columnAlias]
-            index: index + 1
+    ignoredAliases: @[
+        if key? data 'aliases [
+            index: 0
+            loop data\aliases 'columnAlias [
+                set columns index join @[get columns index " AS " _sqlQuote to :string columnAlias]
+                index: index + 1
+            ]
         ]
-    ]
     ]
     selectPrefix: "SELECT"
     if and? key? data 'distinct data\distinct [selectPrefix: "SELECT DISTINCT"]
@@ -382,13 +401,17 @@ _sqlCompile: $[data] [
     unless null? data\tableAlias [
         output\text: join @[output\text " AS " _sqlQuotePart data\tableAlias]
     ]
-    ignoredJoins: @[loop data\joins 'relation [
-        output\text: join @[output\text "\n" relation\type " JOIN\n    " _sqlQuote relation\table]
-        unless null? relation\alias [
-            output\text: join @[output\text " AS " _sqlQuotePart relation\alias]
+    ignoredJoins: @[
+        loop data\joins 'relation [
+            output\text: join @[
+                output\text "\n" relation\type " JOIN\n    " _sqlQuote relation\table
+            ]
+            unless null? relation\alias [
+                output\text: join @[output\text " AS " _sqlQuotePart relation\alias]
+            ]
+            output\text: join @[output\text "\nON\n    " _sqlRender relation\predicate output]
         ]
-        output\text: join @[output\text "\nON\n    " _sqlRender relation\predicate output]
-    ]]
+    ]
     filters: map data\predicates 'predicate [_sqlRender predicate output]
     unless empty? filters [
         output\text: join @[output\text "\nWHERE\n    " join.with:"\n    AND " filters]
@@ -411,6 +434,7 @@ _sqlCompile: $[data] [
 ]
 
 ; Dictionary conversion matches constructor arguments by field name.
+
 define :sqliteQuery [
     init: method [kind columns table predicates ordering limit offset distinct aliases tableAlias joins] [
         compiled: _sqlCompile #[
@@ -432,6 +456,7 @@ define :sqliteQuery [
 ]
 
 ; The caller owns the connection and closes it after use.
+
 sqliteExecute: $[db :database statement] [
     if :dictionary = type statement [statement: to :sqliteQuery statement]
     unless :sqliteQuery = type statement [_sqlFail "Expected SQL query dictionary or sqliteQuery"]
@@ -439,6 +464,7 @@ sqliteExecute: $[db :database statement] [
 ]
 
 ; Return terminal-ready text; keep execution results available via sqliteExecute.
+
 sqliteTable: function [db :database statement] [
     ;; options: [
     ;;     header: :block « optional column labels

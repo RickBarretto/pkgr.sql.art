@@ -1,5 +1,4 @@
 import relative "../src/lib.art"!
-
 minimumAge: 18
 statement: sql [
     select [id name email]
@@ -8,11 +7,9 @@ statement: sql [
     orderBy [name asc]
     limit 20
 ]
-
 compiled: to :sqliteQuery statement
 print compiled\text
 inspect compiled\params
-
 ensure -> compiled\params = [18 1 20]
 ensure -> contains? compiled\text "SELECT"
 print "select: passed"

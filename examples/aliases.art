@@ -1,5 +1,4 @@
 import relative "../src/lib.art"!
-
 ; Run with: arturo examples/aliases.art
 ; Each example checks its results against an in-memory SQLite database.
 db: open.sqlite ":memory:"

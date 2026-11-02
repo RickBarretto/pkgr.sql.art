@@ -1,5 +1,4 @@
 import relative "../src/lib.art"!
-
 ; Run with: arturo examples/distinct.art
 ; Each example checks its results against an in-memory SQLite database.
 db: open.sqlite ":memory:"
@@ -15,7 +14,6 @@ failure: try [
     print compiled\text
     inspect rows
 ]
-
 close db
 unless null? failure [throw to :string failure]
 print "distinct: passed"

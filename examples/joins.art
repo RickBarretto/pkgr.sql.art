@@ -1,5 +1,4 @@
 import relative "../src/lib.art"!
-
 db: open.sqlite ":memory:"
 failure: try [
     query db "CREATE TABLE users (id INTEGER)"
@@ -11,10 +10,24 @@ failure: try [
         from.as: u users
         join orders -> u.id = orders.userId
     ]
-
-    leftStatement: sql [select [u.id] from.as: u users join.left orders [u.id = orders.userId] orderBy [u.id]]
-    rightStatement: sql [select [o.userId] from users join.right.as: o orders [users.id = o.userId] orderBy [o.userId]]
-    selfStatement: sql [select [u.id] from.as: u users join.inner.as: v users [u.id = v.id] orderBy [u.id]]
+    leftStatement: sql [
+        select [u.id]
+        from.as: u users
+        join.left orders [u.id = orders.userId]
+        orderBy [u.id]
+    ]
+    rightStatement: sql [
+        select [o.userId]
+        from users
+        join.right.as: o orders [users.id = o.userId]
+        orderBy [o.userId]
+    ]
+    selfStatement: sql [
+        select [u.id]
+        from.as: u users
+        join.inner.as: v users [u.id = v.id]
+        orderBy [u.id]
+    ]
     ensure -> (sqliteExecute db innerStatement) = [["1"]]
     ensure -> (sqliteExecute db leftStatement) = [["1"] ["2"]]
     ensure -> (sqliteExecute db rightStatement) = [["1"] ["3"]]
