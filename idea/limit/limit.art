@@ -1,0 +1,22 @@
+sql [
+    from :books
+    select [id title]
+    order 'id
+    limit.skip: 10 5
+]
+
+sql [
+    from :books
+    select [id title]
+    order 'id
+    limit 5
+    offset 10
+]
+
+---
+SELECT id,
+    title
+FROM books
+ORDER BY id
+LIMIT 5
+OFFSET 10;

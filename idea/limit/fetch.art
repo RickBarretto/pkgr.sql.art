@@ -1,0 +1,21 @@
+sql [
+    from :books
+    select [id title]
+    order 'id
+    fetch.skip: 10 5
+]
+
+sql [
+    from :books
+    select [id title]
+    order 'id
+    offset 10
+    fetch 5
+]
+
+---
+SELECT id,
+    title
+FROM books
+ORDER BY id
+OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY;

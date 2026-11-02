@@ -1,0 +1,18 @@
+sql [
+    create :books [
+        column 'id :integer
+        column 'shelfId :integer
+        reference 'shelfId :shelves 'id
+    ]
+]
+
+sql [
+    create "books" [
+        column 'id :integer
+        column 'shelfId :integer
+        reference 'shelfId :shelves 'id
+    ]
+]
+
+---
+CREATE TABLE books (id INTEGER NOT NULL, shelfId INTEGER NOT NULL, FOREIGN KEY (shelfId) REFERENCES shelves (id));

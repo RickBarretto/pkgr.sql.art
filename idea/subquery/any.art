@@ -1,0 +1,27 @@
+sql [
+    from.as: 'b :books
+    select 'b\title
+
+    where -> b\pageCount > any query [
+        from :archivedBooks
+        select 'pageCount
+    ]
+]
+
+sql [
+    from.as: 'b 'books
+    select 'b\title
+    
+    where -> b\pageCount > any query [
+        from :archivedBooks
+        select 'pageCount
+    ]
+]
+
+---
+SELECT b.title
+FROM books AS b
+WHERE b.pageCount > ANY (
+    SELECT pageCount
+    FROM archivedBooks
+);

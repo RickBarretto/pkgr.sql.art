@@ -1,0 +1,13 @@
+sql [
+    from :books
+    select.nullif [pageCount 0]
+]
+
+sql [
+    from :books
+    select nullif 'pageCount 0
+]
+
+---
+SELECT NULLIF(pageCount, 0)
+FROM books;

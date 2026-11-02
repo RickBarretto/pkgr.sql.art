@@ -1,0 +1,16 @@
+sql [
+    from :books
+    select 'title
+    where [title like "River%"]
+]
+
+sql [
+    from "books"
+    select 'title
+    where [title like "River%"]
+]
+
+---
+SELECT title
+FROM books
+WHERE title LIKE 'River%';

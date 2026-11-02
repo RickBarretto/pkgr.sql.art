@@ -1,230 +1,179 @@
-# SQL feature ideas
+# SQL function API ideas
 
-Scope: every statement, clause, operator, and function explicitly listed in the
-SQLTutorial.org main learning sequence, from SELECT through WITH. This is a
-design catalog, not a claim to cover every SQL standard or vendor extension.
+This catalog explores an Arturo API for the features in the
+[SQLTutorial learning sequence](https://www.sqltutorial.org/). Examples use an
+original book catalog. Only `idea/` is changed; these are proposals for a future
+API, not examples supported by the current library.
 
-Reference: https://www.sqltutorial.org/
+Start with [the writing guide](STYLE.md) and [the function contracts](API.md),
+then `select/select.art`, `sort/order-by.art`,
+and the feature list below. Every feature has alternatives above `---`; the SQL
+below it is the reference output. `---` is Arturo’s end-of-file string syntax.
+SQL reference values are shown inline for readability; actual values should be
+bound parameters. Identifiers should be quoted by the compiler.
 
-Examples use an original book catalog. `.art` files pair the DSL with conceptual
-SQL directly below `---`, Arturo’s end-of-file string syntax.
-DSL code is uncommented, including proposed syntax. These files are design
-references; proposed grammar is not implemented. The reference SQL uses inline values;
-the current compiler quotes identifiers and binds scalar values.
+## Reading the API
 
-Start with `select.art`, then `order-by.art`; continue in the order below.
-Supported labels identify existing feature capabilities. Drafts now prefer scalar
-arguments without list blocks; these forms still require parser changes.
-RIGHT JOIN additionally requires a compatible SQLite runtime.
+```art
+sql [
+    create :books [
+        column.primary 'id :integer
+        column 'title :string
+    ]
+]
 
-Proposed grammar is tentative. FETCH, schema changes, triggers, grouping extensions,
-and quantified comparisons require explicit dialect decisions before implementation.
+sql [
+    create.view :recentBooks [
+        from :books
+        select [id title]
+        where [publishedYear >= 2020]
+    ]
+]
+```
 
+`sql [...]` provides the scope for every DSL function, including creation and
+write commands. Only `sql` is a public entry point; helpers remain scoped.
+Functions have fixed positional arguments. `create` and `create.view` both take
+an identifier and a body block. A body is needed even for one command; use `->` when it contains one complete
+expression and `[...]` when it contains several commands. Single identifiers need no block: `select 'title`,
+`order 'title`, and `group 'genre`. Lists and grouped expressions keep theirs.
 
-## Syntax decisions
+Columns default to NOT NULL. Use `column.optional` or `add.optional` for nullable
+fields; `.required` is unnecessary.
 
-These drafts follow [Arturo’s language syntax](https://arturo-lang.io/documentation/language/).
-Only `idea/` is being designed; the library grammar remains unchanged.
+Attributes refine a function, rather than defining a second spelling for it:
+`create.view`, `join.left`, `select.count`, `order.desc`, and `group.rollup`.
+There are no dummy positional arguments or implicit “until the next clause”
+bodies. Repeated `select` calls append projections; repeated `where` calls
+combine conditions with AND. Named boolean functions use prefix calls:
+`and predicate1 predicate2`, `or predicate1 predicate2`, and `not predicate`.
+Query clauses can be expressed in a readable order;
+the compiler arranges the resulting SQL.
 
-- `sql [...]` receives unevaluated data. SQL words such as `and`, `or`, and
-  `not` are DSL tokens; they do not call Arturo’s logical functions.
-- Omit blocks for a single value: `select title`, `select *`, `orderBy title`,
-  `groupBy genre`, and `[count *]`. Keep blocks for multiple values, grouped
-  predicates, SQL expressions, nested queries, and individual grouping sets.
-- Blocks hold lists, predicates, SQL expressions, and nested queries. Parentheses
-  capture a host Arturo value; they do not group SQL expressions.
-- Table and view names prefer type tokens, such as `:books` and `:recentBooks`.
-  Column names remain words or literals. Literals such as `'where` escape DSL
-  keywords, and paths such as `b\title` qualify columns.
-- Strings and numbers in expressions are SQL values. The compiler binds them.
-- Flags select variants (`join.left`, `column.notNull`). Attribute labels carry
-  named options (`.as:`, `.into:`, `.on:`).
-- Proposed schema operations use `create.table`, `alter.table`, `drop.table`,
-  and `column` with constraint flags. Column types use native type tokens:
-  `:integer` maps to SQL INTEGER and `:string` to SQL TEXT. SQL-specific types
-  still need a mapping design. `add-column.art` retains the original alternative
-  exploration, including custom `:books` and `:text` type names.
-- Proposed UPDATE assignments use labels: `set [available: false]`. These are
-  parsed as data, not evaluated into an Arturo dictionary.
-- Proposed CASE expressions use one expression block with explicit `when` branches
-  and an `else` value.
-- Use `where -> predicate` and `having -> predicate` to omit outer predicate blocks.
-  The next clause or enclosing block ends the predicate; inner grouping is retained.
-- Top-level schema bodies share the enclosing `sql` block. INSERT uses repeated
-  `values [row ...]` clauses, keeping row boundaries without an outer rows block.
-  These flatter forms are design proposals only.
-- Use `=<` for Arturo’s less-or-equal symbol. SQL reference text uses `<=`.
-  This spelling is a parser enhancement proposal, not current library behavior.
-- `---` begins one string containing everything through the end of the file.
-  Reference SQL goes directly below it, without braces.
+Calculated projections compose functions naturally: `select avg 'pageCount` or
+`select coalesce [subtitle title]`. `select` consumes their result as its one
+argument, without an expression-mode attribute.
+
+The preferred table identifier is `:books`. Identifiers also accept `:path`,
+`:pathliteral` (Arturo’s spelling of literalPath), `:literal`, and `:string`.
+Words are accepted inside captured DSL bodies and identifier lists. They are
+not assumed to be literal identifiers during ordinary Arturo evaluation.
+See [identifier handling](API.md#identifiers-and-values) for examples and the
+difference between an identifier string and a bound string value.
+
+Alternatives explore the same contracts: a scalar versus a one-item list,
+a projection attribute versus a composed helper call, bulk assignments, or a different
+identifier form. They do not add interchangeable names for every function.
+
+## Validation and scope
+
+The drafts can be read as Arturo values. This alone does not verify their future
+behavior. The proposed API still needs implementation and semantic tests.
+Dialect support must be decided for FETCH, RIGHT/FULL joins, identity columns,
+triggers, TRUNCATE, grouping extensions, and quantified comparisons.
 
 ## Querying data
 
-- [select](select.art) — supported.
+- [select](select/select.art).
 
 ## Sorting rows
 
-- [order-by](order-by.art) — supported.
+- [order-by](sort/order-by.art).
 
 ## Limiting rows
 
-- [distinct](distinct.art) — supported.
-- [limit](limit.art) — supported.
-- [fetch](fetch.art) — proposed.
+- [distinct](limit/distinct.art).
+- [limit](limit/limit.art).
+- [fetch](limit/fetch.art).
 
 ## Filtering rows
 
-- [where](where.art) — supported.
-- [and](and.art) — supported.
-- [or](or.art) — supported.
-- [between](between.art) — proposed, including the `=<` spelling.
-- [in](in.art) — proposed.
-- [like](like.art) — proposed.
-- [is-null](is-null.art) — supported.
-- [not](not.art) — proposed.
+- [where](filter/where.art).
+- [and](filter/and.art).
+- [or](filter/or.art).
+- [between](filter/between.art).
+- [in](filter/in.art).
+- [like](filter/like.art).
+- [is-null](filter/is-null.art).
+- [not](filter/not.art).
 
 ## Joining tables
 
-- [inner-join](inner-join.art) — supported.
-- [left-join](left-join.art) — supported.
-- [right-join](right-join.art) — supported.
-- [full-outer-join](full-outer-join.art) — proposed.
-- [cross-join](cross-join.art) — proposed.
-- [self-join](self-join.art) — supported.
+- [inner-join](join/inner-join.art).
+- [left-join](join/left-join.art).
+- [right-join](join/right-join.art).
+- [full-outer-join](join/full-outer-join.art).
+- [cross-join](join/cross-join.art).
+- [self-join](join/self-join.art).
 
 ## Grouping rows
 
-- [group-by](group-by.art) — proposed.
-- [having](having.art) — proposed.
-- [grouping-sets](grouping-sets.art) — proposed.
-- [rollup](rollup.art) — proposed.
-- [cube](cube.art) — proposed.
+- [group-by](group/group-by.art).
+- [having](group/having.art).
+- [grouping-sets](group/grouping-sets.art).
+- [rollup](group/rollup.art).
+- [cube](group/cube.art).
 
 ## Set operators
 
-- [union](union.art) — proposed.
-- [intersect](intersect.art) — proposed.
-- [minus](minus.art) — proposed.
+- [union](set/union.art).
+- [intersect](set/intersect.art).
+- [minus](set/minus.art).
 
 ## Working with tables
 
-- [create-table](create-table.art) — proposed.
-- [primary-key](primary-key.art) — proposed.
-- [not-null](not-null.art) — proposed.
-- [drop-table](drop-table.art) — proposed.
-- [add-column](add-column.art) — proposed.
-- [drop-column](drop-column.art) — proposed.
-- [foreign-key](foreign-key.art) — proposed.
-- [unique](unique.art) — proposed.
-- [check](check.art) — proposed.
-- [alter-table](alter-table.art) — proposed.
-- [identity-column](identity-column.art) — proposed.
+- [create-table](tables/create-table.art).
+- [primary-key](tables/primary-key.art).
+- [not-null](tables/not-null.art).
+- [drop-table](tables/drop-table.art).
+- [add-column](tables/add-column.art).
+- [drop-column](tables/drop-column.art).
+- [foreign-key](tables/foreign-key.art).
+- [unique](tables/unique.art).
+- [check](tables/check.art).
+- [alter-table](tables/alter-table.art).
+- [identity-column](tables/identity-column.art).
 
 ## Modifying data
 
-- [insert](insert.art) — proposed.
-- [update](update.art) — proposed.
-- [delete](delete.art) — proposed.
-- [truncate-table](truncate-table.art) — proposed.
+- [insert](change/insert.art).
+- [update](change/update.art).
+- [delete](change/delete.art).
+- [truncate-table](change/truncate-table.art).
 
-## Views and triggers
+## Views
 
-- [views](views.art) — proposed.
-- [triggers](triggers.art) — proposed.
+- [views](views/views.art).
+
+## Triggers
+
+- [triggers](trigger/triggers.art).
 
 ## Conditional expressions
 
-- [case](case.art) — proposed.
-- [coalesce](coalesce.art) — proposed.
-- [nullif](nullif.art) — proposed.
+- [case](conditions/case.art).
+- [coalesce](conditions/coalesce.art).
+- [nullif](conditions/nullif.art).
 
 ## Aggregate functions
 
-- [aggregate-functions](aggregate-functions.art) — supported.
-- [avg](avg.art) — supported.
-- [count](count.art) — supported.
-- [sum](sum.art) — supported.
-- [max](max.art) — supported.
-- [min](min.art) — supported.
+- [aggregate-functions](aggregate/aggregate-functions.art).
+- [avg](aggregate/avg.art).
+- [count](aggregate/count.art).
+- [sum](aggregate/sum.art).
+- [max](aggregate/max.art).
+- [min](aggregate/min.art).
 
 ## Subqueries
 
-- [subquery](subquery.art) — proposed.
-- [correlated-subquery](correlated-subquery.art) — proposed.
-- [exists](exists.art) — proposed.
-- [all](all.art) — proposed.
-- [any](any.art) — proposed.
+- [subquery](subquery/subquery.art).
+- [correlated-subquery](subquery/correlated-subquery.art).
+- [exists](subquery/exists.art).
+- [all](subquery/all.art).
+- [any](subquery/any.art).
 
 ## Common table expressions
 
-- [with](with.art) — proposed.
+CTEs are grouped under `subquery/`.
 
-## Alternatives
-
-Each file keeps its existing examples first and adds an alternative as its last
-`sql` block above `---`. Both spellings are design candidates for the same SQL
-behavior, not promises of implementation support. The reference string is shared.
-The aggregate-functions draft retains its existing authored reference unchanged;
-its expression-list alternative uses the pageCount names from that reference.
-
-| Feature | Alternative explored |
-| --- | --- |
-| [add-column](add-column.art) | Action and object naming |
-| [aggregate-functions](aggregate-functions.art) | Explicit expression list |
-| [all](all.art) | Literal target instead of a type target |
-| [alter-table](alter-table.art) | Action and object naming |
-| [and](and.art) | Predicate block instead of an arrow |
-| [any](any.art) | Predicate block instead of an arrow |
-| [avg](avg.art) | Projection attribute instead of an expression block |
-| [between](between.art) | Predicate block instead of an arrow |
-| [case](case.art) | Separate branch-list block |
-| [check](check.art) | Action and object naming |
-| [coalesce](coalesce.art) | Projection attribute instead of an expression block |
-| [correlated-subquery](correlated-subquery.art) | Predicate block instead of an arrow |
-| [count](count.art) | Projection attribute instead of an expression block |
-| [create-table](create-table.art) | Action and object naming |
-| [cross-join](cross-join.art) | Literal target instead of a type target |
-| [cube](cube.art) | Action and object naming |
-| [delete](delete.art) | Action and object naming |
-| [distinct](distinct.art) | Explicit projection list |
-| [drop-column](drop-column.art) | Action and object naming |
-| [drop-table](drop-table.art) | Action and object naming |
-| [exists](exists.art) | Predicate block instead of an arrow |
-| [fetch](fetch.art) | Attribute-based ordering |
-| [foreign-key](foreign-key.art) | Action and object naming |
-| [full-outer-join](full-outer-join.art) | Literal target instead of a type target |
-| [group-by](group-by.art) | Attribute-based grouping |
-| [grouping-sets](grouping-sets.art) | Action and object naming |
-| [having](having.art) | Predicate block instead of an arrow |
-| [identity-column](identity-column.art) | Action and object naming |
-| [in](in.art) | Predicate block instead of an arrow |
-| [inner-join](inner-join.art) | Literal target instead of a type target |
-| [insert](insert.art) | Positional target instead of an attribute |
-| [intersect](intersect.art) | Explicit set-operation family |
-| [is-null](is-null.art) | Predicate block instead of an arrow |
-| [left-join](left-join.art) | Literal target instead of a type target |
-| [like](like.art) | Predicate block instead of an arrow |
-| [limit](limit.art) | Attribute-based ordering |
-| [max](max.art) | Projection attribute instead of an expression block |
-| [min](min.art) | Projection attribute instead of an expression block |
-| [minus](minus.art) | Explicit set-operation family |
-| [not-null](not-null.art) | Action and object naming |
-| [not](not.art) | Predicate block instead of an arrow |
-| [nullif](nullif.art) | Projection attribute instead of an expression block |
-| [or](or.art) | Predicate block instead of an arrow |
-| [order-by](order-by.art) | Attribute-based ordering |
-| [primary-key](primary-key.art) | Action and object naming |
-| [right-join](right-join.art) | Literal target instead of a type target |
-| [rollup](rollup.art) | Action and object naming |
-| [select](select.art) | Explicit projection list |
-| [self-join](self-join.art) | Literal target instead of a type target |
-| [subquery](subquery.art) | Predicate block instead of an arrow |
-| [sum](sum.art) | Projection attribute instead of an expression block |
-| [triggers](triggers.art) | Action and object naming |
-| [truncate-table](truncate-table.art) | Action and object naming |
-| [union](union.art) | Explicit set-operation family |
-| [unique](unique.art) | Action and object naming |
-| [update](update.art) | Predicate block instead of an arrow |
-| [views](views.art) | Action and object naming |
-| [where](where.art) | Predicate block instead of an arrow |
-| [with](with.art) | Named common-table expression option |
+- [with](subquery/with.art).

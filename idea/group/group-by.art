@@ -1,0 +1,19 @@
+sql [
+    from :books
+    select 'genre
+    select.count "*"
+    group 'genre
+]
+
+sql [
+    from :books
+    select 'genre
+    select count "*"
+    group 'genre
+]
+
+---
+SELECT genre,
+    COUNT(*)
+FROM books
+GROUP BY genre;

@@ -1,0 +1,18 @@
+sql [
+    from.as: 'b :books
+    join.right.as: 'p :publishers [b\publisherId = p\id]
+    select [b\title p\name]
+]
+
+sql [
+    from.as: 'b 'books
+    join.right.as: 'p 'publishers [b\publisherId = p\id]
+    select [b\title p\name]
+]
+
+---
+SELECT b.title,
+    p.name
+FROM books AS b
+RIGHT JOIN publishers AS p
+ON b.publisherId = p.id;

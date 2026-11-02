@@ -1,0 +1,16 @@
+sql [
+    from :books
+    select 'title
+    where [genre in ["Poetry" "History"]]
+]
+
+sql [
+    from "books"
+    select 'title
+    where [genre in ["Poetry" "History"]]
+]
+
+---
+SELECT title
+FROM books
+WHERE genre IN ('Poetry', 'History');

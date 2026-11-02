@@ -1,0 +1,28 @@
+sql [
+    with :recentBooks [
+        from :books
+        select [id title]
+        where [publishedYear >= 2020]
+    ]
+    from :recentBooks
+    select 'title
+]
+
+sql [
+    with "recentBooks" [
+        from 'books
+        select [id title]
+        where [publishedYear >= 2020]
+    ]
+    from "recentBooks"
+    select 'title
+]
+
+---
+WITH recentBooks AS (
+    SELECT id, title
+    FROM books
+    WHERE publishedYear >= 2020
+)
+SELECT title
+FROM recentBooks;

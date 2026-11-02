@@ -1,0 +1,14 @@
+sql [
+    create :books [
+        column.unique 'catalogCode :string
+    ]
+]
+
+sql [
+    create "books" [
+        column.unique 'catalogCode :string
+    ]
+]
+
+---
+CREATE TABLE books (catalogCode TEXT NOT NULL UNIQUE);

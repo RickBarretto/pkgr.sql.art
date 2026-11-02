@@ -1,0 +1,16 @@
+sql [
+    create :books [
+        column 'id :integer
+        column 'title :string
+    ]
+]
+
+sql [
+    create "books" [
+        column 'id :integer
+        column 'title :string
+    ]
+]
+
+---
+CREATE TABLE books (id INTEGER NOT NULL, title TEXT NOT NULL);

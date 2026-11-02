@@ -1,0 +1,25 @@
+sql [
+    create.trigger.after.insert.on: :loans :loanAdded [
+        update :books [
+            assign 'available false
+            where [id = new\bookId]
+        ]
+    ]
+]
+
+sql [
+    create.trigger.after.insert.on: 'loans 'loanAdded [
+        update 'books [
+            assign 'available false
+            where [id = new\bookId]
+        ]
+    ]
+]
+
+---
+CREATE TRIGGER loanAdded AFTER INSERT
+ON loans
+BEGIN UPDATE books
+SET available = 0
+WHERE id = NEW.bookId;
+END;

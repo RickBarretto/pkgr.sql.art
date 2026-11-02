@@ -1,0 +1,22 @@
+sql [
+    from :books
+    select.as: 'length choose [
+        when [pageCount > 400] "Long"
+        otherwise "Short"
+    ]
+]
+
+sql [
+    from :books
+    select.as: 'length choose.default: "Short" [
+        when [pageCount > 400] "Long"
+    ]
+]
+
+---
+SELECT
+    CASE
+        WHEN pageCount > 400 THEN 'Long'
+        ELSE 'Short'
+    END AS length
+FROM books;

@@ -1,0 +1,16 @@
+sql [
+    create :books [
+        column 'pageCount :integer
+        check [pageCount > 0]
+    ]
+]
+
+sql [
+    create "books" [
+        column 'pageCount :integer
+        check [pageCount > 0]
+    ]
+]
+
+---
+CREATE TABLE books (pageCount INTEGER NOT NULL, CHECK (pageCount > 0));

@@ -1,0 +1,16 @@
+sql [
+    delete :books [
+        where [id = 7]
+    ]
+]
+
+sql [
+    delete 'books [
+        where [id = 7]
+    ]
+]
+
+---
+DELETE
+FROM books
+WHERE id = 7;

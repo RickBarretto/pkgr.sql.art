@@ -1,0 +1,21 @@
+sql [
+    create :labels [
+        column 'name :string
+    ]
+]
+
+sql [
+    create "labels" [
+        column 'name :string
+    ]
+]
+
+
+sql [
+    create :labels -> column.optional 'name :string
+]
+
+---
+CREATE TABLE labels (name TEXT NOT NULL);
+
+CREATE TABLE labels (name TEXT);

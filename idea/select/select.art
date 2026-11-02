@@ -1,0 +1,22 @@
+sql [
+    from :books
+    select 'title
+]
+
+sql [
+    from :books
+    select "*"
+]
+
+sql [
+    from :books
+    select [title publishedYear]
+]
+
+---
+SELECT title
+FROM books;
+SELECT *
+FROM books;
+SELECT title, publishedYear
+FROM books;

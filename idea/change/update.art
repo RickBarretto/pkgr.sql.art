@@ -1,0 +1,21 @@
+sql [
+    update :books [
+        assign 'available false
+        where [id = 7]
+    ]
+]
+
+sql [
+    update.values: [available: false]
+]
+
+sql [
+    :books [
+        where [id = 7]
+    ]
+]
+
+---
+UPDATE books
+SET available = 0
+WHERE id = 7;

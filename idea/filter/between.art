@@ -1,0 +1,23 @@
+sql [
+    from :books
+    select 'title
+    where [publishedYear between [2015 2020]]
+]
+
+sql [
+    from :books
+    select 'title
+    where [and
+        publishedYear >= 2015
+        publishedYear =< 2020
+    ]
+]
+
+---
+SELECT title
+FROM books
+WHERE publishedYear BETWEEN 2015 AND 2020;
+
+SELECT title
+FROM books
+WHERE publishedYear >= 2015 AND publishedYear <= 2020;

@@ -1,0 +1,13 @@
+sql [
+    from :books
+    select.avg 'pageCount
+]
+
+sql [
+    from :books
+    select avg 'pageCount
+]
+
+---
+SELECT AVG(pageCount)
+FROM books;

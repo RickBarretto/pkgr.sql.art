@@ -1,0 +1,16 @@
+sql [
+    create :shelves [
+        column.primary 'id :integer
+        column 'name :string
+    ]
+]
+
+sql [
+    create "shelves" [
+        column.primary 'id :integer
+        column 'name :string
+    ]
+]
+
+---
+CREATE TABLE shelves (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL);

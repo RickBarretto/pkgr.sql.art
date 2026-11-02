@@ -1,0 +1,28 @@
+sql [
+    from.as: 'b :books
+    select 'b\title
+    where [b\pageCount > query [
+        from.as: 'peer :books
+        select.avg 'peer\pageCount
+        where [peer\genre = b\genre]
+    ]]
+]
+
+sql [
+    from.as: 'b 'books
+    select 'b\title
+    where [b\pageCount > query [
+        from.as: 'peer 'books
+        select.avg 'peer\pageCount
+        where [peer\genre = b\genre]
+    ]]
+]
+
+---
+SELECT b.title
+FROM books AS b
+WHERE b.pageCount > (
+    SELECT AVG(peer.pageCount)
+    FROM books AS peer
+    WHERE peer.genre = b.genre
+);

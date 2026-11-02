@@ -1,0 +1,14 @@
+sql [
+    alter :books [
+        remove 'subtitle
+    ]
+]
+
+sql [
+    alter 'books [
+        remove "subtitle"
+    ]
+]
+
+---
+ALTER TABLE books DROP COLUMN subtitle;

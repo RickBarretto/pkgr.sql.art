@@ -1,0 +1,13 @@
+sql [
+    from :books
+    select.count "*"
+]
+
+sql [
+    from :books
+    select count "*"
+]
+
+---
+SELECT COUNT(*)
+FROM books;

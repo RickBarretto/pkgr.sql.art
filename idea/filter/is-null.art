@@ -1,0 +1,16 @@
+sql [
+    from :books
+    select 'title
+    where [retiredAt is null]
+]
+
+sql [
+    from "books"
+    select 'title
+    where [retiredAt is null]
+]
+
+---
+SELECT title
+FROM books
+WHERE retiredAt IS NULL;

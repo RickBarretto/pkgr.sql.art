@@ -1,0 +1,20 @@
+sql [
+    combine.except [
+        sql [from :books select 'title]
+        sql [from :archivedBooks select 'title]
+    ]
+]
+
+sql [
+    combine.except [
+        sql [from 'books select 'title]
+        sql [from 'archivedBooks select 'title]
+    ]
+]
+
+---
+SELECT title
+FROM books
+EXCEPT
+SELECT title
+FROM archivedBooks;

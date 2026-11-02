@@ -1,0 +1,28 @@
+sql [
+    from.as: 'b :books
+    select 'b\title
+    where [exists query [
+        from :loans
+        select 'id
+        where [loans\bookId = b\id]
+    ]]
+]
+
+sql [
+    from.as: 'b 'books
+    select 'b\title
+    where [exists query [
+        from :loans
+        select 'id
+        where [loans\bookId = b\id]
+    ]]
+]
+
+---
+SELECT b.title
+FROM books AS b
+WHERE EXISTS (
+    SELECT id
+    FROM loans
+    WHERE loans.bookId = b.id
+);

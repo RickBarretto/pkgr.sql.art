@@ -1,0 +1,16 @@
+sql [
+    from :books
+    select 'title
+    where [not [genre = "Poetry"]]
+]
+
+sql [
+    from "books"
+    select 'title
+    where [not [genre = "Poetry"]]
+]
+
+---
+SELECT title
+FROM books
+WHERE NOT (genre = 'Poetry');

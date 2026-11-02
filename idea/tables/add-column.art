@@ -1,0 +1,11 @@
+sql [
+    alter :books -> add.optional 'subtitle :string
+]
+
+sql [
+    alter "books" -> add.optional 'subtitle :string
+]
+
+---
+ALTER TABLE books 
+ADD COLUMN subtitle TEXT;

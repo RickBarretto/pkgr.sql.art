@@ -1,0 +1,16 @@
+sql [
+    from :books
+    select 'title
+    where [publishedYear >= 2020]
+]
+
+sql [
+    from "books"
+    select 'title
+    where [publishedYear >= 2020]
+]
+
+---
+SELECT title
+FROM books
+WHERE publishedYear >= 2020;

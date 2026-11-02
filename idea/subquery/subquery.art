@@ -1,0 +1,25 @@
+sql [
+    from :books
+    select 'title
+    where [pageCount > query [
+        from :books
+        select.avg 'pageCount
+    ]]
+]
+
+sql [
+    from 'books
+    select 'title
+    where [pageCount > query [
+        from 'books
+        select.avg 'pageCount
+    ]]
+]
+
+---
+SELECT title
+FROM books
+WHERE pageCount > (
+    SELECT AVG(pageCount)
+    FROM books
+);
