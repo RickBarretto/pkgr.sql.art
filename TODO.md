@@ -120,11 +120,18 @@ implemented for execution. This checklist does not promise another SQL dialect.
 - [x] Existing Unitt specifications and runnable examples cover the completed implementation (180 assertions at the start of this round).
 - [x] Add regression tests for the remaining expression, scope and set-operation work.
 - [x] Automate construction checks for every example in the `api/` catalog.
-- [ ] Update API documentation and runnable examples for this round's completed behavior.
-- [ ] Run Unitt and all examples sequentially, inspect results, and commit this round's changes.
+- [x] Update API documentation and runnable examples for this round's completed behavior.
+- [x] Run Unitt and all examples sequentially, inspect results, and commit this round's changes.
 
 ## Current round
 
 The active implementation scope is expression composition, reference-scope validation,
 set-operand isolation, catalog checks, documentation and verification. Dialect-pending
 items remain unchecked until a supported compilation/execution strategy is implemented.
+
+
+### Verification and commits
+
+- `84f45db`: expression composition, relation scopes, set-operand isolation and catalog checks.
+- `ab3a51b`: scoped SQLite scalar adapters; preserve native functions after success and errors.
+- Final verification: 404 Unitt assertions pass; every runnable example and `src/main.art` pass, executed sequentially. The API example is included in CI.

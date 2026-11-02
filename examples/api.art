@@ -22,6 +22,24 @@ failure: try [
         limit 10
     ]
     ensure -> (sqliteExecute db statement) = [["River Atlas" "2024"]]
+    composed: sql [
+        from :books
+        select coalesce [[nullif title ""] "Untitled"]
+        select.as: 'nextYear + publishedYear 1
+        where [publishedYear + 1 >= 2025]
+    ]
+    ensure -> (sqliteExecute db composed) = [["River Atlas" "2025"]]
+    correlated: sql [
+        from.as: b :books select 'b\title
+        where [exists query [from.as: peer :books select 'peer\id where [peer\id = b\id]]]
+        order 'b\id
+    ]
+    ensure -> (sqliteExecute db correlated) = [["River Atlas"] ["Quiet Maps"]]
+    combined: sql [combine.union [
+        sql [from :books select 'title order.desc 'publishedYear limit 1]
+        sql [with :archived [from :books select 'title where [available = false]] from :archived select 'title]
+    ]]
+    ensure -> (sqliteExecute db combined) = [["Quiet Maps"] ["River Atlas"]]
     print sqliteTable.header: ["Title" "Year"] db statement
 ]
 close db

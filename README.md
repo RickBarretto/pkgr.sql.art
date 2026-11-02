@@ -71,7 +71,10 @@ inspect compiled\params
 
 `sql` returns an inspectable dictionary. `to :sqliteQuery` produces `text` and
 `params` without executing SQL or mutating the statement. Values use `?` parameters;
-booleans bind as SQLite integers. Parenthesized Arturo computations run once during
+booleans use SQLite integer values. Renderer-local adapters add numeric casts
+where scalar expressions lack column affinity, and preserve SQL nulls on Arturo
+runtimes that bind parameters as text. These helpers do not replace native Arturo
+functions and leave scope after rendering. Parenthesized Arturo computations run once during
 construction, including computations using function-local variables.
 
 Tables, columns and aliases accept types, literals, strings, paths, literal paths,
@@ -108,13 +111,32 @@ may mix, and null is accepted with any result type.
 
 Predicates support comparisons (including `=<`), prefix `and`, `or`, `not`,
 `in`, `between`, `like`, `is null`, and `is not null`. Nested blocks preserve
-grouping. Use null tests rather than comparison with null.
+grouping. Use null tests rather than comparison with null. Scalar helpers can
+appear on either side of a comparison. Arithmetic uses Arturo's grouping from
+the right; explicit blocks change grouping:
+
+```art
+sql [
+    from :books
+    select coalesce [[nullif subtitle ""] title]
+    select.as: 'adjusted + pageCount 2
+    where [coalesce [subtitle title] like "River%"]
+    where [[pageCount + 2] * 3 >= 300]
+]
+```
 
 `join` defaults to INNER and accepts `.left`, `.right`, `.full` and `.as:`.
 `cross` takes a table with optional `.as:` and no predicate. Nested `query`
 expressions, correlated column paths, `exists`, `with` CTEs and
 `combine.union`/`.intersect`/`.except` are supported. Scalar subqueries require
-one projection and set operations require matching projection counts.
+one projection and set operations require matching projection counts. Each set
+operand retains its own ORDER BY, pagination and CTE scope.
+
+Qualified references must name a local table or alias. A table alias hides its
+original table name. Correlations refer to explicit outer aliases; inner aliases
+stay inside their query. Duplicate relation aliases are rejected. Trigger `new`
+and `old` references are available for INSERT and DELETE respectively, and both
+are available for UPDATE.
 
 `limit` accepts a nonnegative count and optional `.skip:`; `offset` is an
 alternative to `.skip:` and requires pagination. Use explicit ordering for
@@ -185,4 +207,6 @@ Optional `.header:` labels must match the result width; empty results return
 Run `unitt`, `arturo src/main.art`, and the self-testing scripts in `examples/`.
 `examples/api.art` demonstrates the function API with an in-memory database.
 The contracts and feature catalog live in `api/`; dialect-specific limitations
-are described above.
+are described above. [TODO.md](TODO.md) tracks each API feature and outstanding
+dialect support. Unitt also constructs every catalog example and checks that each
+`sql` call returns exactly one statement.

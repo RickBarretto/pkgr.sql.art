@@ -92,3 +92,4 @@ jobs:
                 arturo examples/combined.art
                 arturo examples/joins.art
                 arturo examples/identifiers.art
+                arturo examples/api.art

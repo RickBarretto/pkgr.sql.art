@@ -1,4 +1,4 @@
-# Proposed function contracts
+# Function contracts
 
 See [writing practices](STYLE.md) for preferred spellings and layout.
 
@@ -42,6 +42,9 @@ predicate, scalar expression, assignment value, or row is a bound value.
 
 `Scalar` means a string, integer, floating-point number, boolean, or null.
 Null binding is distinct from null comparison: use `is null`/`is not null`.
+The SQLite compiler preserves numeric and null semantics even when the host
+runtime binds values as text. Its conversion helpers are scoped to rendering;
+they do not replace native Arturo functions.
 `Expression` means a SQL expression value returned by a scoped helper function. `Predicate` means a
 block representing one SQL condition. These blocks are interpreted as SQL data,
 not passed to Arturo `do`. Paths inside them identify SQL columns.
@@ -64,7 +67,7 @@ query, in the caller’s scope; compiling it later must not evaluate them again.
 | `delete` | `tableName Identifier`, `body :block` | Build a delete |
 | `combine` | `queries :block` | Combine query calls; `.union`, `.intersect`, or `.except` required |
 
-For example, the proposed `create` signature in Arturo parameter notation is:
+For example, the `create` signature in Arturo parameter notation is:
 
 ```art
 [tableName :type :path :pathliteral :literal :string :word body :block]
@@ -87,7 +90,8 @@ owner: a table body accepts columns and constraints, not query commands.
 
 Body commands leave no incidental stack values; the enclosing constructor
 returns one statement/query. `combine` evaluates its block of query calls and
-consumes those results. It requires at least two compatible projections. Builders
+consumes those results. It requires at least two compatible projections. Each operand keeps its ordering,
+pagination and CTE definitions in its own SQL scope. Builders
 create data only: execution and connection management are separate operations.
 Overlapping built-in names are resolved locally, without rebinding global Arturo
 functions such as `select`, `query`, `remove`, or `when`.
@@ -96,6 +100,8 @@ Attributes do not change positional arity. For example, `insert.columns:` still
 takes the table name and body; `create.view` still takes the name and body.
 Only one create variant is allowed per call. Trigger `.on:` names the table;
 `.before`/`.after` and `.insert`/`.update`/`.delete` select timing and event.
+Trigger writes may refer to `new` for INSERT, `old` for DELETE, and both for
+UPDATE; these names are rejected outside their owning trigger scope.
 
 ## Query commands
 
@@ -152,7 +158,10 @@ Predicate blocks use Arturo function-call syntax. Comparisons may use their
 native infix symbols; named boolean functions are prefix calls: `and` and `or`
 consume two predicate expressions, and `not` consumes one. There is no SQL-style
 AND/OR precedence in the DSL. Arity and explicit grouping determine the tree;
-only generated SQL uses infix AND/OR.
+only generated SQL uses infix AND/OR. Scalar helpers work on either side of
+comparisons. Nested scalar-expression blocks must contain one complete expression.
+Arithmetic uses `+`, `-`, `*`, and `/` as prefix or infix calls, groups from the
+right, and preserves explicit grouping blocks.
 
 ```art
 sql [
@@ -175,14 +184,16 @@ sql [
 An arrow can wrap one complete prefix call, as in `where -> and ... ...`;
 it does not turn following lines into separate clauses. Repeated `where` calls
 remain an alternative for conjunction. The comparison symbol `=<` renders SQL
-`<=`. The remaining predicate spellings (`between`, `in`, `like`, and null tests)
-are still proposals to review against the same function-call rule. SQL rendering
+`<=`. The predicate spellings `between`, `in`, `like`, and null tests follow the same captured-call rule. SQL rendering
 must preserve the explicitly constructed predicate tree.
 
 `query body :block`, available only within `sql` and its nested bodies, constructs one nested SQL expression query. `exists`, `all`,
 and `any` each consume that query. A subquery must have a single output column
 for scalar and quantified comparisons. Correlated references name a declared
-outer alias. A nested query block stays nested because its scope matters.
+outer alias. Qualified references are validated after construction against local
+relations and explicit outer aliases. A local alias hides the original table name;
+inner aliases do not leak to their parent query. CTE definitions have independent
+relation scopes. A nested query block stays nested because its scope matters.
 
 ## Schema and write commands
 
