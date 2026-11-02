@@ -2,11 +2,10 @@
 
 Reference: [API contracts](api/API.md), [writing guide](api/STYLE.md), and the linked feature examples below.
 
-A checked feature has implementation and regression coverage. An unchecked feature
-still needs the work described. Features marked **dialect pending** can be built
-as query data, but conversion to SQLite rejects them explicitly; they are not
-implemented for execution. PostgreSQL and MySQL plans below are proposals awaiting
-syntax decisions; they do not indicate implemented support.
+A checked feature has implementation and regression coverage for the target
+explicitly described. An unchecked feature still needs the work described.
+SQLite and PostgreSQL compilers are implemented; PostgreSQL server execution is
+not claimed. MySQL plans below remain proposals awaiting syntax decisions.
 
 ## Construction and scope
 
@@ -56,9 +55,9 @@ syntax decisions; they do not indicate implemented support.
 
 - [x] [`group keys`](api/group/group-by.art): scalar or list grouping keys.
 - [x] [`having predicate`](api/group/having.art): aggregate conditions; repeated calls combine with AND.
-- [ ] [`group.sets`](api/group/grouping-sets.art): validate grouping blocks, including an empty grouping set; **dialect pending** for SQL rendering and execution.
-- [ ] [`group.rollup`](api/group/rollup.art): parsed; **dialect pending** for SQL rendering and execution.
-- [ ] [`group.cube`](api/group/cube.art): parsed; **dialect pending** for SQL rendering and execution.
+- [x] [`group.sets`](api/group/grouping-sets.art): validate grouping blocks, including an empty grouping set; PostgreSQL emits GROUPING SETS; SQLite rejects it.
+- [x] [`group.rollup`](api/group/rollup.art): PostgreSQL emits ROLLUP; SQLite rejects it.
+- [x] [`group.cube`](api/group/cube.art): PostgreSQL emits CUBE; SQLite rejects it.
 
 ## Aggregates and conditional expressions
 
@@ -79,8 +78,8 @@ syntax decisions; they do not indicate implemented support.
 - [x] [Correlated subqueries](api/subquery/correlated-subquery.art): compile and execute references to outer aliases.
 - [x] Reject undeclared or out-of-scope correlated references during construction.
 - [x] [`exists query`](api/subquery/exists.art): existence predicates allow multiple output columns.
-- [ ] [`all query`](api/subquery/all.art): validate a single-column query operand; **dialect pending** for SQL rendering and execution.
-- [ ] [`any query`](api/subquery/any.art): validate a single-column query operand; **dialect pending** for SQL rendering and execution.
+- [x] [`all query`](api/subquery/all.art): validate a single-column query operand; PostgreSQL emits ALL; SQLite rejects it.
+- [x] [`any query`](api/subquery/any.art): validate a single-column query operand; PostgreSQL emits ANY; SQLite rejects it.
 - [x] [`with name body`](api/subquery/with.art): CTEs, duplicate-name rejection, nested query validation, and parameter ordering.
 - [x] [`combine.union queries`](api/set/union.art): at least two queries with matching projection counts.
 - [x] [`combine.intersect queries`](api/set/intersect.art): INTERSECT.
@@ -96,7 +95,7 @@ syntax decisions; they do not indicate implemented support.
 - [x] [`column.unique`](api/tables/unique.art): unique columns.
 - [x] [`reference columns target targetColumns`](api/tables/foreign-key.art): explicit foreign keys with matching column counts.
 - [x] [`check predicate`](api/tables/check.art): table checks with escaped schema literals.
-- [ ] [`column.identity`](api/tables/identity-column.art): parsed; **dialect pending** because SQLite lacks GENERATED AS IDENTITY syntax.
+- [x] [`column.identity`](api/tables/identity-column.art): PostgreSQL emits GENERATED ALWAYS AS IDENTITY; SQLite rejects it.
 - [x] [`alter table body` / `rename newName`](api/tables/alter-table.art): rename tables; one SQLite alteration per statement.
 - [x] [`add name storageType`](api/tables/add-column.art): `.optional`, `.primary`, `.unique` and `.identity` use column contracts; SQLite restrictions still apply.
 - [x] [`remove name`](api/tables/drop-column.art): DROP COLUMN; requires a supporting SQLite version.
@@ -107,7 +106,7 @@ syntax decisions; they do not indicate implemented support.
 - [x] [`insert table body`](api/change/insert.art): explicit `columns` or `.columns:`, appended `row` blocks, and row-width validation.
 - [x] [`update table body`](api/change/update.art): `assign column value`, bulk `.values:` labels, optional filters, and scalar/null values.
 - [x] [`delete table body`](api/change/delete.art): optional filters.
-- [ ] [`truncate table`](api/change/truncate-table.art): parsed; **dialect pending** because SQLite lacks TRUNCATE syntax.
+- [x] [`truncate table`](api/change/truncate-table.art): PostgreSQL emits TRUNCATE TABLE; SQLite rejects it.
 - [x] [`create.view name body` / `drop.view name`](api/views/views.art): query-only bodies and escaped stored literals, including pagination counts.
 - [x] [`create.trigger name body`](api/trigger/triggers.art): `.on:`, `.before`/`.after`, `.insert`/`.update`/`.delete`; independent nested writes and escaped stored literals.
 - [x] Validate trigger `new`/`old` references against the selected event.
@@ -153,12 +152,13 @@ below are still proposals. No tracking issues have been opened.
 - [x] Generate PostgreSQL schema, views and triggers, including separate function/trigger DDL.
 - [ ] Generate MySQL schema, views and trigger syntax.
 - [x] Test PostgreSQL nested parameter ordering, catalog compilation, dialect boundaries and immutable input without requiring database drivers.
-- [ ] Document dialect support and compilation-only usage, run checks sequentially, and commit each verified step.
+- [x] Document implemented PostgreSQL/SQLite support, run checks sequentially, and commit each verified step.
+- [ ] Document and verify MySQL once its compiler is implemented.
 
 ### Full feature matrix
 
-SQLite describes the current implementation. PostgreSQL and MySQL 8.4 describe
-compilation capabilities and proposed MySQL 8.4 capabilities. PostgreSQL output
+SQLite describes the current implementation. PostgreSQL describes implemented compilation capabilities; MySQL 8.4 describes
+proposed compilation capabilities. PostgreSQL output
 is compiler-tested; no PostgreSQL server execution is claimed. “Translate” is a proposal that still needs a syntax/policy decision.
 
 | API feature | SQLite: current | PostgreSQL: compiler implemented | MySQL 8.4: proposed |
@@ -209,7 +209,7 @@ is compiler-tested; no PostgreSQL server execution is claimed. “Translate” i
 
 ### Candidate compiler interfaces
 
-These spellings must be reviewed alongside the future syntax design.
+SQLite and PostgreSQL spellings are implemented. MySQL spelling remains a proposal.
 
 | Detail | SQLite: implemented | PostgreSQL: implemented | MySQL: candidate |
 | --- | --- | --- | --- |
@@ -230,11 +230,13 @@ execution tests are distinct from compiler tests and must not be claimed until r
 - [ ] Decide whether MySQL `fetch` translates to LIMIT/OFFSET or is rejected.
 - [ ] Define identity behavior: PostgreSQL ALWAYS versus BY DEFAULT, MySQL AUTO_INCREMENT indexing requirements, and any SQLite mapping.
 - [ ] Define per-dialect storage types, string lengths and indexable string constraints.
-- [ ] Define boolean/null parameter handling and placeholder conventions for external drivers.
-- [ ] Define how PostgreSQL trigger functions are named, emitted and managed alongside triggers.
-- [ ] Define whether generated output may contain multiple statements and how callers consume them.
+- [x] Define PostgreSQL native boolean/null parameters and numbered placeholders for external drivers.
+- [ ] Define MySQL parameter handling and placeholder conventions.
+- [x] Define PostgreSQL trigger helper naming and emit separate function/trigger statements; callers manage cleanup.
+- [x] Expose PostgreSQL multi-statement DDL through an ordered `statements` block alongside `text` and `params`.
 - [ ] Define MySQL version requirements and diagnostics for unsupported joins, grouping extensions and restricted quantified subqueries.
-- [ ] Define the validation/test strategy, including optional database-backed execution checks.
+- [x] Validate PostgreSQL through compiler regression tests and the complete API catalog.
+- [ ] Add optional PostgreSQL server execution checks and driver integration.
 - [ ] After syntax decisions, create tracking issues from the agreed scope. No issues have been opened yet.
 
 ### Candidate issue breakdown for later
@@ -276,3 +278,13 @@ execution tests are distinct from compiler tests and must not be claimed until r
 - [x] Translate `fetch`/`.skip:` to LIMIT/OFFSET without mutating the input or changing bound parameter order.
 - [x] Keep non-equivalent SQLite operations explicit: grouping extensions, ALL/ANY, GENERATED ALWAYS identity and TRUNCATE diagnostics point to `to :postgresQuery`.
 - [ ] Choose any future SQLite emulation or identity/truncate mapping separately; no implicit semantic substitution is implemented.
+
+### Current PostgreSQL delivery
+
+- [x] Implement `to :postgresQuery` without introducing dialect keywords into captured SQL bodies.
+- [x] Compile all eight formerly unavailable API constructs through PostgreSQL; translate SQLite FETCH safely.
+- [x] Verify 722 assertions, including scoped-helper cleanup, native-function preservation and every catalog example.
+- [x] Document compilation-only support and provide a runnable PostgreSQL example in CI.
+- [x] Run all examples sequentially and commit the final documentation/example step.
+
+Commits: `8d48697` adds PostgreSQL compilation; `a98c1ee` adds SQLite FETCH translation and dialect diagnostics.

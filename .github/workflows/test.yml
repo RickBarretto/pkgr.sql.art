@@ -93,3 +93,4 @@ jobs:
                 arturo examples/joins.art
                 arturo examples/identifiers.art
                 arturo examples/api.art
+                arturo examples/postgres.art

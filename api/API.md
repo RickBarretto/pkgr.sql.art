@@ -5,7 +5,11 @@ See [writing practices](STYLE.md) for preferred spellings and layout.
 Based on [Arturo’s syntax and evaluation rules](https://arturo-lang.io/documentation/language/):
 functions consume a fixed number of positional arguments; attributes add flags
 or named values. Whitespace and line breaks do not determine call boundaries.
-These contracts describe the captured-body interpreter. SQLite conversion rejects unsupported dialect features.
+These contracts describe the captured-body interpreter shared by SQLite and
+PostgreSQL compilation. `to :sqliteQuery` selects SQLite; `to :postgresQuery`
+selects PostgreSQL. Conversion generates data only; database execution is separate.
+SQLite maps FETCH to LIMIT/OFFSET and rejects the remaining unsupported features
+with diagnostics that point to the PostgreSQL target.
 
 `sql [...]` is the public entry point and the scope for every DSL function.
 `create`, `select`, expression helpers, and all other DSL functions exist only
@@ -220,9 +224,29 @@ ignoring it. Optional columns omit NOT NULL in the generated SQL.
 `:integer` maps to SQL INTEGER; `:string` to SQL TEXT. The table name `:books`
 is an identifier, while the second argument of `column 'title :string` describes
 storage. Additional type mappings and identity behavior depend on the dialect.
+PostgreSQL identity compiles to GENERATED ALWAYS AS IDENTITY on an integer,
+non-optional column, with no implicit primary key. SQLite rejects identity and
+TRUNCATE rather than silently changing their semantics.
 INSERT requires column order to be explicit. `update.values:` accepts a captured
 label/value block for bulk assignment, with its two positional arguments intact.
 Labels in that option are SQL column names, not assignments into the caller’s
 scope. `choose` requires at least one when branch and has a single result type
 compatible with its branches. `coalesce [subtitle title]` preserves SQL null
 semantics; it is not Arturo `??`, which also substitutes for false.
+
+## Compiled output
+
+Both compiled types expose `text` and `params` and preserve the constructed input.
+SQLite uses positional `?` placeholders with its runtime-specific scalar adapters.
+PostgreSQL uses numbered placeholders and native scalar values; numbering follows
+SQL text order through CTEs, projections, joins, nested queries and pagination.
+
+PostgreSQL additionally exposes `statements`. It contains one SQL string for an
+ordinary command, or two for a trigger: CREATE FUNCTION followed by CREATE TRIGGER.
+Trigger helper names are `sql_trigger_` plus a deterministic digest of the table
+and trigger names. Existing functions are never replaced. Callers own external
+driver integration, DDL execution, transactions and helper-function cleanup.
+
+The PostgreSQL compiler covers the reference catalog, including FETCH, ROLLUP,
+CUBE, GROUPING SETS, ALL/ANY, identity and TRUNCATE. This is compilation coverage,
+not a claim of PostgreSQL server execution testing. MySQL is not yet implemented.

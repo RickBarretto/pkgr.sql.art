@@ -67,8 +67,10 @@ identifier form. They do not add interchangeable names for every function.
 ## Validation and scope
 
 The specifications exercise construction, conversion and SQLite execution.
-SQLite conversion rejects FETCH, identity columns, TRUNCATE, grouping extensions
-and quantified comparisons. RIGHT/FULL joins depend on the bundled SQLite version.
+SQLite translates FETCH to LIMIT/OFFSET and rejects identity columns, TRUNCATE,
+grouping extensions and quantified comparisons. PostgreSQL compilation supports
+all of these forms. RIGHT/FULL joins in SQLite depend on the bundled version.
+PostgreSQL output is compiler-tested; no server execution adapter is included.
 
 ## Querying data
 

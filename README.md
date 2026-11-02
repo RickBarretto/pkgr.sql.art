@@ -182,6 +182,49 @@ that identify the target dialect; it does not silently substitute operations wit
 different semantics. RIGHT/FULL
 joins and ALTER DROP COLUMN depend on the SQLite version bundled with Arturo.
 
+### Dialect selection
+
+Build a statement once, then choose its SQL target through conversion:
+
+```art
+statement: sql [from :books select 'title where [available = true] order 'title fetch.skip: 0 10]
+sqlite: to :sqliteQuery statement
+postgres: to :postgresQuery statement
+```
+
+Both compiled objects provide `text` and `params`. PostgreSQL uses numbered
+`$1`, `$2`, ... placeholders and preserves native boolean, numeric and null
+parameter values for an external driver. SQLite retains its parameter adapters.
+Neither conversion executes SQL or changes the statement. PostgreSQL compiler
+helpers are local to the conversion; native Arturo functions remain intact.
+
+| API feature | SQLite | PostgreSQL |
+| --- | --- | --- |
+| `fetch` | Translated to LIMIT/OFFSET | Native OFFSET/FETCH |
+| `group.rollup`, `group.cube`, `group.sets` | Explicit error | Native grouping extensions |
+| `all`, `any` comparisons | Explicit error | Native quantified comparisons |
+| `column.identity` | Explicit error | INTEGER GENERATED ALWAYS AS IDENTITY |
+| `truncate` | Explicit error | TRUNCATE TABLE |
+
+PostgreSQL column mappings are INTEGER, TEXT, BOOLEAN, DOUBLE PRECISION and
+BYTEA. Identity requires an integer, non-optional column; it does not implicitly
+add a primary key. Views and schema constraints use escaped literals because
+stored definitions cannot contain bind parameters.
+
+PostgreSQL objects also provide `statements`, an ordered block of SQL strings.
+Ordinary queries have one entry. A trigger produces two: a CREATE FUNCTION and
+a CREATE TRIGGER. The helper function has a deterministic name derived from its
+table and trigger names, and creation never replaces an existing function.
+Execute those DDL entries in order through your external PostgreSQL driver.
+The caller manages transactions and helper-function cleanup; dropping a trigger
+or its table does not automatically remove its generated function.
+
+PostgreSQL support is compilation-only: SQL generation, parameter order and
+catalog coverage are tested, but no PostgreSQL server execution or Arturo driver
+integration is claimed. `sqliteExecute` and `sqliteTable` accept only SQLite
+statements. MySQL remains a documented proposal in [TODO.md](TODO.md).
+Run `arturo examples/postgres.art` for a compilation example without a database.
+
 ### Execution and terminal tables
 
 ```art

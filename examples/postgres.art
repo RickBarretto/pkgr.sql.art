@@ -1,0 +1,40 @@
+import {src/lib.art}!
+
+; Compilation only: an external PostgreSQL driver consumes the returned data.
+statement: sql [
+    with :recentBooks [
+        from :books select [id genre]
+        where [publishedYear >= 2020]
+        where [available = true]
+    ]
+    from :recentBooks
+    select genre
+    select.count.as: 'total "*"
+    group.rollup genre
+    having [[count "*"] > 1]
+    order genre
+    fetch.skip: 0 5
+]
+snapshot: new statement
+compiled: to :postgresQuery statement
+ensure -> compiled\params = @[2020 true 1 0 5]
+ensure -> statement = snapshot
+ensure -> contains? compiled\text {ROLLUP ("genre")}
+ensure -> contains? compiled\text {FETCH FIRST}
+ensure -> (size compiled\statements) = 1
+print compiled\text
+inspect compiled\params
+
+identity: to :postgresQuery sql [create :books [column.identity id :integer column title :string]]
+ensure -> contains? identity\text "GENERATED ALWAYS AS IDENTITY"
+quantified: to :postgresQuery sql [
+    from.as: b :books select 'b\title
+    where [b\pageCount > all query [from :archivedBooks select pageCount]]
+]
+ensure -> contains? quantified\text "ALL (SELECT"
+
+trigger: to :postgresQuery sql [create.trigger.after.insert.on: :loans :loanAdded [
+    update :books [assign available false where [id = new\bookId]]
+]]
+ensure -> (size trigger\statements) = 2
+ensure -> empty? trigger\params
