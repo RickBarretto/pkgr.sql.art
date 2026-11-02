@@ -1,0 +1,407 @@
+; Captured bodies use command arity; no host DSL names are rebound.
+_sqlAttributes: $[state allowed] [
+    options: #[]
+    while [state\position < size state\tokens] [
+        token: get state\tokens state\position
+        unless contains? [:attribute :attributelabel] type token -> break
+        ignored: _sqlTake state
+        name: to :string token
+        unless contains? allowed name -> _sqlFail join @["Unsupported attribute: " name]
+        if key? options name -> _sqlFail "Duplicate attribute"
+        valued: contains? ["as" "skip" "default" "on" "columns" "values"] name
+        if valued <> (:attributelabel = type token) -> _sqlFail "Attribute requires its declared flag or value form"
+        set options name (:attributelabel = type token) ? [_sqlTake state] [true]
+    ]
+    options
+]
+
+_sqlNames: $[value] [
+    values: (:block = type value) ? [value] [@[value]]
+    if empty? values -> _sqlFail "Expected identifiers"
+    map values 'item -> _sqlCheckedName item
+]
+
+_sqlExpression: $[state] [
+    name: _sqlPeek state
+    if contains? ["count" "sum" "avg" "min" "max"] name [
+        ignored: _sqlTake state
+        argument: _sqlTake state
+        if :block = type argument -> if 1 = size argument -> argument: first argument
+        node: ((_sqlIdentifierText argument) = "*") ? [#[kind: "wildcard"]] [_sqlIdentifier argument]
+        if and? node\kind = "wildcard" name <> "count" -> _sqlFail "Only count accepts wildcard"
+        return #[kind: "aggregate" operator: upper name argument: node]
+    ]
+    if contains? ["query" "all" "any"] name [
+        ignored: _sqlTake state
+        if name <> "query" -> return #[kind: "quantified" operator: upper name argument: _sqlExpression state]
+        queryData: _sqlBuild _sqlBody state
+        if queryData\kind <> "select" -> _sqlFail "Expected nested select"
+        if 1 <> size queryData\columns -> _sqlFail "Scalar subquery requires one projection"
+        return #[kind: "subquery" query: queryData]
+    ]
+    if contains? ["coalesce" "nullif"] name [
+        ignored: _sqlTake state
+        arguments: []
+        (name = "coalesce") ? [
+            values: _sqlTake state
+            unless :block = type values -> _sqlFail "Expected operand block"
+            arguments: map values 'value -> _sqlOperand value
+            if 2 > size arguments -> _sqlFail "COALESCE requires at least two operands"
+        ] [
+            arguments: @[_sqlExpression state _sqlExpression state]
+        ]
+        return #[kind: "function" operator: upper name arguments: arguments]
+    ]
+    if name = "choose" [
+        ignored: _sqlTake state
+        options: _sqlAttributes state ["default"]
+        branches: []
+        fallback: null
+        if key? options 'default -> fallback: _sqlScalar get options 'default
+        body: #[tokens: _sqlBody state position: 0]
+        while [body\position < size body\tokens] [
+            command: _sqlText _sqlTake body
+            case command [
+                "when" [branches: append branches #[predicate: _sqlPredicate _sqlBody body value: _sqlScalar _sqlTake body]]
+                "otherwise" [
+                    unless null? fallback -> _sqlFail "Duplicate CASE fallback"
+                    fallback: _sqlScalar _sqlTake body
+                ]
+                any -> _sqlFail "Expected when or otherwise"
+            ]
+        ]
+        if empty? branches -> _sqlFail "CASE requires branches"
+        return #[kind: "choose" branches: branches fallback: fallback]
+    ]
+    token: _sqlTake state
+    if :block = type token -> return _sqlProjection token
+    _sqlOperand token
+]
+
+_sqlScalar: $[token] [
+    if and? :word = type token "null" = to :string token -> return #[kind: "value" value: null]
+    if :null = type token -> return #[kind: "value" value: null]
+    node: _sqlOperand token
+    unless node\kind = "value" -> _sqlFail "Expected scalar value"
+    node
+]
+
+; Arrow bodies capture exactly one complete command or predicate.
+_sqlBody: $[state] [
+    token: _sqlTake state
+    if :block = type token -> return token
+    unless "->" = to :string token -> _sqlFail "Expected body block"
+    begin: state\position
+    probe: #[tokens: state\tokens position: begin]
+    name: _sqlPeek probe
+    (contains? ["and" "or" "not" "exists"] name) ? [
+        ignored: _sqlAnd probe
+            while ["or" = _sqlPeek probe] [ignored: _sqlTake probe ignored: _sqlAnd probe]
+    ] [
+        (contains? ["add" "remove" "rename" "column"] name) ? [
+            ignored: _sqlTake probe
+            ignored: _sqlAttributes probe ["optional" "primary" "unique" "identity"]
+            ignored: _sqlTake probe
+            if contains? ["add" "column"] name -> ignored: _sqlTake probe
+        ] [
+            ignored: _sqlAnd probe
+            while ["or" = _sqlPeek probe] [ignored: _sqlTake probe ignored: _sqlAnd probe]
+        ]
+    ]
+    result: []
+    while [state\position < probe\position] [result: append result @[_sqlTake state]]
+    result
+]
+
+_sqlBuild: $[tokens] [
+    state: #[tokens: tokens position: 0]
+    result: #[
+        kind: "select" columns: [] table: "" tableAlias: null joins: []
+        predicates: [] ordering: [] limit: null offset: null distinct: false aliases: []
+        details: #[groups: [] groupMode: "" having: [] fetch: false ctes: []]
+    ]
+    while [state\position < size tokens] [
+        command: _sqlText _sqlTake state
+        if contains? ["create" "alter" "insert" "update" "delete" "drop" "truncate" "combine"] command [
+            if or? result\table <> "" not? empty? result\columns -> _sqlFail "Cannot mix statements and query clauses"
+            result: _sqlStatement command state result
+            if state\position <> size tokens -> _sqlFail "Expected one statement"
+            return result
+        ]
+        case command [
+            "from" [
+                unless result\table = "" -> _sqlFail "Duplicate FROM"
+                relation: _sqlRelation state false
+                result\table: relation\table
+                result\tableAlias: relation\alias
+            ]
+            "select" [
+                options: _sqlAttributes state ["distinct" "as" "count" "sum" "avg" "min" "max" "coalesce" "nullif" "expressions"]
+                if key? options 'distinct -> result\distinct: true
+                modes: select ["count" "sum" "avg" "min" "max" "coalesce" "nullif" "expressions"] 'mode -> key? options mode
+                if 1 < size modes -> _sqlFail "Conflicting SELECT modes"
+                columns: []
+                (empty? modes) ? [
+                    name: _sqlPeek state
+                    (contains? ["count" "sum" "avg" "min" "max" "coalesce" "nullif" "choose"] name) ? [
+                        columns: @[_sqlExpression state]
+                    ] [
+                        values: _sqlTake state
+                        values: (:block = type values) ? [values] [@[values]]
+                        loop values 'value [
+                            columns: append columns ((_sqlIdentifierText value) = "*") ? [#[kind: "wildcard"]] [_sqlIdentifier value]
+                        ]
+                    ]
+                ] [
+                    mode: first modes
+                    value: _sqlTake state
+                    case mode [
+                        "expressions" [columns: map value 'item -> _sqlProjection item]
+                        "coalesce" [
+                            if 2 > size value -> _sqlFail "COALESCE requires operands"
+                            columns: @[#[kind: "function" operator: "COALESCE" arguments: map value 'item -> _sqlOperand item]]
+                        ]
+                        "nullif" [
+                            if 2 <> size value -> _sqlFail "NULLIF requires two operands"
+                            columns: @[#[kind: "function" operator: "NULLIF" arguments: map value 'item -> _sqlOperand item]]
+                        ]
+                        any [
+                            columns: @[_sqlExpression #[tokens: @[to :word mode value] position: 0]]
+                        ]
+                    ]
+                ]
+                if empty? columns -> _sqlFail "SELECT requires columns"
+                aliases: []
+                if key? options 'as -> aliases: _sqlNames get options 'as
+                unless empty? aliases -> if (size aliases) <> size columns -> _sqlFail "Alias count must match projections"
+                index: 0
+                loop columns 'column [
+                    unless empty? aliases [
+                        if column\kind = "wildcard" -> _sqlFail "Cannot alias wildcard"
+                        column: #[kind: "alias" argument: column value: get aliases index]
+                    ]
+                    result\columns: append result\columns column
+                    index: index + 1
+                ]
+            ]
+            "where" [result\predicates: append result\predicates _sqlPredicate _sqlBody state]
+            "having" [result\details\having: append result\details\having _sqlPredicate _sqlBody state]
+            "join" [
+                relation: _sqlRelation state true
+                relation\predicate: _sqlPredicate _sqlBody state
+                result\joins: append result\joins relation
+            ]
+            "cross" [
+                relation: _sqlRelation state false
+                relation\type: "CROSS"
+                result\joins: append result\joins relation
+            ]
+            "order" [
+                options: _sqlAttributes state ["asc" "desc"]
+                if and? key? options 'asc key? options 'desc -> _sqlFail "Conflicting sort directions"
+                direction: (key? options 'desc) ? ["desc"] ["asc"]
+                loop _sqlNames _sqlTake state 'name [result\ordering: append result\ordering #[column: name direction: direction]]
+            ]
+            "orderBy" [
+                body: #[tokens: _sqlTake state position: 0]
+                while [body\position < size body\tokens] [
+                    name: _sqlReadName body
+                    direction: "asc"
+                    if contains? ["asc" "desc"] _sqlPeek body -> direction: _sqlText _sqlTake body
+                    result\ordering: append result\ordering #[column: name direction: direction]
+                ]
+            ]
+            "group" [
+                options: _sqlAttributes state ["rollup" "cube" "sets"]
+                if 1 < size options -> _sqlFail "Conflicting grouping modes"
+                unless empty? result\details\groups -> _sqlFail "Duplicate grouping"
+                groupKeys: _sqlTake state
+                result\details\groups: (key? options 'sets) ? [map groupKeys 'groupSet -> _sqlNamesAllowEmpty groupSet] [_sqlNames groupKeys]
+                unless empty? options -> result\details\groupMode: first keys options
+            ]
+            "with" [
+                name: _sqlReadName state
+                nested: _sqlBuild _sqlBody state
+                result\details\ctes: append result\details\ctes #[name: name statement: nested]
+            ]
+            "limit" [
+                unless null? result\limit -> _sqlFail "Duplicate pagination"
+                options: _sqlAttributes state ["skip"]
+                result\limit: get _sqlScalar _sqlTake state 'value
+                result\details\fetch: command = "fetch"
+                if key? options 'skip [
+                    unless null? result\offset -> _sqlFail "Duplicate offset"
+                    result\offset: get _sqlScalar get options 'skip 'value
+                ]
+            ]
+            "fetch" [
+                unless null? result\limit -> _sqlFail "Duplicate pagination"
+                options: _sqlAttributes state ["skip"]
+                result\limit: get _sqlScalar _sqlTake state 'value
+                result\details\fetch: command = "fetch"
+                if key? options 'skip [
+                    unless null? result\offset -> _sqlFail "Duplicate offset"
+                    result\offset: get _sqlScalar get options 'skip 'value
+                ]
+            ]
+            "offset" [
+                unless null? result\offset -> _sqlFail "Duplicate offset"
+                result\offset: get _sqlScalar _sqlTake state 'value
+            ]
+            any -> _sqlFail join @["Unknown SQL command: " command]
+        ]
+    ]
+    if or? result\table = "" empty? result\columns -> _sqlFail "SELECT requires source and projections"
+    if and? null? result\limit not? null? result\offset -> _sqlFail "Offset requires limit or fetch"
+    loop @[result\limit result\offset] 'page [
+        unless null? page [
+            unless :integer = type page -> _sqlFail "Pagination requires integers"
+            if page < 0 -> _sqlFail "Pagination cannot be negative"
+        ]
+    ]
+    result
+]
+
+_sqlStatement: $[command state result] [
+    allowed: case command [
+        "create" [["view" "trigger" "before" "after" "insert" "update" "delete" "on"]]
+        "drop" [["view"]]
+        "insert" [["columns"]]
+        "update" [["values"]]
+        "combine" [["union" "intersect" "except"]]
+        any [[]]
+    ]
+    options: _sqlAttributes state allowed
+    if command = "create" [
+        unless key? options 'trigger [
+            loop ["before" "after" "insert" "update" "delete" "on"] 'flag [
+                if key? options flag -> _sqlFail "Trigger option requires create.trigger"
+            ]
+        ]
+    ]
+    result\kind: command
+    details: result\details
+    details\options: options
+    if command = "combine" [
+        modes: select ["union" "intersect" "except"] 'mode -> key? options mode
+        if 1 <> size modes -> _sqlFail "COMBINE requires one set operator"
+        details\operator: upper first modes
+        body: #[tokens: _sqlBody state position: 0]
+        details\queries: []
+        while [body\position < size body\tokens] [
+            if "sql" <> _sqlText _sqlTake body -> _sqlFail "Expected sql query"
+            nested: _sqlBuild _sqlBody body
+            if nested\kind <> "select" -> _sqlFail "Expected SELECT in combine"
+            details\queries: append details\queries nested
+        ]
+        if 2 > size details\queries -> _sqlFail "COMBINE requires two queries"
+        width: size get first details\queries 'columns
+        loop details\queries 'nested -> if width <> size nested\columns -> _sqlFail "Incompatible set projections"
+        return result
+    ]
+    result\table: _sqlReadName state
+    if contains? ["drop" "truncate"] command -> return result
+    if and? key? options 'view key? options 'trigger -> _sqlFail "Conflicting create variants"
+    if key? options 'view [
+        unless command = "create" -> _sqlFail "view is a create option"
+        details\statement: _sqlBuild _sqlBody state
+        return result
+    ]
+    body: #[tokens: _sqlBody state position: 0]
+    if key? options 'trigger [
+        details\statements: []
+        while [body\position < size body\tokens] [
+            action: _sqlText _sqlTake body
+            unless contains? ["insert" "update" "delete"] action -> _sqlFail "Expected trigger write"
+            details\statements: append details\statements _sqlStatement action body new result
+        ]
+        return result
+    ]
+    details\definitions: []
+    details\rows: []
+    details\fields: []
+    details\assignments: []
+    if key? options 'columns -> details\fields: _sqlNames get options 'columns
+    if key? options 'values [
+        values: get options 'values
+        unless 0 = (size values) % 2 -> _sqlFail "Expected label/value pairs"
+        bulk: #[tokens: values position: 0]
+        while [bulk\position < size values] [
+            label: _sqlTake bulk
+            unless :label = type label -> _sqlFail "Expected assignment label"
+            details\assignments: append details\assignments #[name: to :string label value: _sqlScalar _sqlTake bulk]
+        ]
+    ]
+    while [body\position < size body\tokens] [
+        action: _sqlText _sqlTake body
+        case action [
+            "column" [
+                unless or? and? command = "create" action = "column" and? command = "alter" action = "add" -> _sqlFail "Column command outside schema body"
+                flags: _sqlAttributes body ["optional" "primary" "unique" "identity"]
+                if and? key? flags 'optional key? flags 'primary -> _sqlFail "Primary key cannot be optional"
+                name: _sqlReadName body
+                storage: _sqlTake body
+                unless :type = type storage -> _sqlFail "Expected storage type"
+                details\definitions: append details\definitions #[kind: "column" name: name storage: _sqlIdentifierText storage flags: flags]
+            ]
+            "add" [
+                unless or? and? command = "create" action = "column" and? command = "alter" action = "add" -> _sqlFail "Column command outside schema body"
+                flags: _sqlAttributes body ["optional" "primary" "unique" "identity"]
+                if and? key? flags 'optional key? flags 'primary -> _sqlFail "Primary key cannot be optional"
+                name: _sqlReadName body
+                storage: _sqlTake body
+                unless :type = type storage -> _sqlFail "Expected storage type"
+                details\definitions: append details\definitions #[kind: "column" name: name storage: _sqlIdentifierText storage flags: flags]
+            ]
+            "reference" [
+                unless command = "create" -> _sqlFail "Reference outside table body"
+                columns: _sqlNames _sqlTake body
+                target: _sqlReadName body
+                targets: _sqlNames _sqlTake body
+                if (size columns) <> size targets -> _sqlFail "Reference column counts must match"
+                details\definitions: append details\definitions #[kind: "reference" columns: columns target: target targets: targets]
+            ]
+            "check" [
+                unless command = "create" -> _sqlFail "CHECK outside table body"
+                details\definitions: append details\definitions #[kind: "check" predicate: _sqlPredicate _sqlBody body]
+            ]
+            "remove" [
+                unless command = "alter" -> _sqlFail "ALTER command outside alter body"
+                details\definitions: append details\definitions #[kind: action name: _sqlReadName body]
+            ]
+            "rename" [
+                unless command = "alter" -> _sqlFail "ALTER command outside alter body"
+                details\definitions: append details\definitions #[kind: action name: _sqlReadName body]
+            ]
+            "columns" [
+                unless command = "insert" -> _sqlFail "Columns outside insert"
+                unless empty? details\fields -> _sqlFail "Duplicate columns"
+                details\fields: _sqlNames _sqlTake body
+            ]
+            "row" [
+                unless command = "insert" -> _sqlFail "Row outside insert"
+                values: _sqlTake body
+                unless :block = type values -> _sqlFail "Expected row block"
+                details\rows: append details\rows @[map values 'value -> _sqlScalar value]
+            ]
+            "assign" [
+                unless command = "update" -> _sqlFail "Assignment outside update"
+                details\assignments: append details\assignments #[name: _sqlReadName body value: _sqlScalar _sqlTake body]
+            ]
+            "where" [
+                unless contains? ["update" "delete"] command -> _sqlFail "WHERE outside write query"
+                result\predicates: append result\predicates _sqlPredicate _sqlBody body
+            ]
+            any -> _sqlFail "Command is not valid in this body"
+        ]
+    ]
+    if contains? ["create" "alter"] command -> if empty? details\definitions -> _sqlFail "Empty schema body"
+    if command = "insert" [
+        if or? empty? details\fields empty? details\rows -> _sqlFail "INSERT requires columns and rows"
+        loop details\rows 'row -> if (size row) <> size details\fields -> _sqlFail "Row width must match columns"
+    ]
+    if and? command = "update" empty? details\assignments -> _sqlFail "UPDATE requires assignments"
+    result
+]
+
+_sqlNamesAllowEmpty: $[values] [(empty? values) ? [[]] [_sqlNames values]]

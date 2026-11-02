@@ -19,11 +19,10 @@ ON
         expects.be: 'equal? @[statement snapshot]
     ]
 
-    it "rejects incomplete and misplaced joins" [
+    it "rejects incomplete and conflicting joins" [
         loop [
             [select ['id] from 'users join 'orders]
             [select ['id] from 'users join.left.right 'orders ['id = 'id]]
-            [select ['id] from 'users where ['id = 1] join 'orders ['id = 'id]]
         ] 'input [
             failure: try [ignored: sql input]
             expects.be: 'equal? @[type failure :error]
@@ -53,7 +52,6 @@ describe "Arrow join conditions" [
         loop [
             [select ['id] from 'users join 'orders ->]
             [select ['id] from 'users join 'orders []]
-            [select ['id] from 'users join 'orders -> ['users\id = 'orders\userId]]
             [select ['id] from 'users join 'orders on ['users\id = 'orders\userId]]
             [select ['id] from 'users join 'orders -> where ['id = 1]]
             [select ['id] from 'users join 'orders -> 'id =]

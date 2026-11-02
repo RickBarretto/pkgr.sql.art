@@ -65,7 +65,7 @@ _sqlOperand: $[token] [
 _sqlPeek: $[state] [
     if state\position >= size state\tokens -> return ""
     token: get state\tokens state\position
-    unless :word = type token -> return ""
+    unless contains? [:word :symbol] type token -> return ""
     to :string token
 ]
 
@@ -95,13 +95,13 @@ _sqlRelation: $[state isJoin] [
         (name = "as") ? [
             unless :attributelabel = type token -> _sqlFail "Alias requires a value"
             alias: _sqlTake state
-            unless contains? [:word :literal :string :type] type alias -> _sqlFail "Expected alias"
+            unless contains? [:word :literal :path :pathliteral :string :type] type alias -> _sqlFail "Expected alias"
             result\alias: _sqlCheckedName alias
         ] [
-            unless and? isJoin contains? ["inner" "left" "right"] name -> _sqlFail "Unknown relation attribute"
+            unless and? isJoin contains? ["inner" "left" "right" "full"] name -> _sqlFail "Unknown relation attribute"
             unless :attribute = type token -> _sqlFail "Join type is a flag"
             if (size seen) > 1 [
-                loop ["inner" "left" "right"] 'other [
+                loop ["inner" "left" "right" "full"] 'other [
                     if and? other <> name contains? seen other -> _sqlFail "Conflicting join types"
                 ]
             ]
@@ -114,9 +114,29 @@ _sqlRelation: $[state isJoin] [
 ]
 
 _sqlAtom: $[state] [
+    head: _sqlPeek state
+    if contains? ["and" "or"] head [
+        ignored: _sqlTake state
+        left: _sqlAtom state
+        return #[kind: "boolean" operator: upper head left: left right: _sqlAtom state]
+    ]
+    if head = "not" [
+        ignored: _sqlTake state
+        return #[kind: "negation" argument: _sqlAtom state]
+    ]
+    if head = "exists" [
+        ignored: _sqlTake state
+        if "query" <> _sqlText _sqlTake state -> _sqlFail "EXISTS requires query"
+        return #[kind: "exists" argument: #[kind: "subquery" query: _sqlBuild _sqlBody state]]
+    ]
     token: _sqlReference state
-    if :block = type token -> return _sqlPredicate token
-    left: _sqlOperand token
+    if :block = type token [
+        ; A grouped scalar expression may be the left side of a comparison.
+        (contains? ["=" "<>" "!=" "<" "<=" "=<" ">" ">="] _sqlPeek state) ? [
+            left: _sqlExpression #[tokens: token position: 0]
+        ] [return _sqlPredicate token]
+    ]
+    unless :block = type token -> left: _sqlOperand token
     operator: _sqlText _sqlTake state
     if operator = "!" [
         if "=" <> _sqlText _sqlTake state -> _sqlFail "Expected = after !"
@@ -131,9 +151,18 @@ _sqlAtom: $[state] [
         if "null" <> _sqlText _sqlTake state -> _sqlFail "Expected null after is"
         return #[kind: "null" left: left negate: negate]
     ]
-    unless contains? ["=" "<>" "!=" "<" "<=" ">" ">="] operator -> _sqlFail "Unsupported SQL comparison"
+    if contains? ["in" "between"] operator [
+        values: _sqlTake state
+        unless :block = type values -> _sqlFail "Expected value list"
+        if empty? values -> _sqlFail "Empty predicate value list"
+        if and? operator = "between" 2 <> size values -> _sqlFail "BETWEEN requires two values"
+        return #[kind: operator left: left arguments: map values 'value -> _sqlOperand value]
+    ]
+    if operator = "like" -> return #[kind: "comparison" left: left operator: "LIKE" right: _sqlExpression state]
+    unless contains? ["=" "<>" "!=" "<" "<=" "=<" ">" ">="] operator -> _sqlFail "Unsupported SQL comparison"
     if operator = "!=" -> operator: "<>"
-    right: _sqlOperand _sqlReference state
+    if operator = "=<" -> operator: "<="
+    right: _sqlExpression state
     #[kind: "comparison" left: left operator: operator right: right]
 ]
 
@@ -187,140 +216,18 @@ _sqlProjection: $[token] [
     #[kind: "aggregate" operator: upper operator argument: argument]
 ]
 
-sql: $[_sqlInput] [
-    _sqlState: #[tokens: _sqlInput position: 0]
-    _sqlQuery: #[
-        kind: "select"
-        columns: []
-        table: ""
-        predicates: []
-        ordering: []
-        limit: null
-        offset: null
-    ]
-    if "select" <> _sqlText _sqlTake _sqlState -> _sqlFail "Expected select"
-    _sqlQuery\distinct: false
-    _sqlQuery\aliases: []
-    _sqlExpressions: false
-    _sqlSeen: []
-    while [contains? [:attribute :attributelabel] type get _sqlInput _sqlState\position] [
-        _sqlAttribute: _sqlTake _sqlState
-        _sqlName: to :string _sqlAttribute
-        if contains? _sqlSeen _sqlName -> _sqlFail "Duplicate SELECT attribute"
-        _sqlSeen: append _sqlSeen _sqlName
-        case _sqlName [
-            "distinct" [
-                unless :attribute = type _sqlAttribute -> _sqlFail "distinct is a flag"
-                _sqlQuery\distinct: true
-            ]
-            "expressions" [
-                unless :attribute = type _sqlAttribute -> _sqlFail "expressions is a flag"
-                _sqlExpressions: true
-            ]
-            "as" [
-                unless :attributelabel = type _sqlAttribute -> _sqlFail "as requires aliases"
-                _sqlQuery\aliases: _sqlTake _sqlState
-                unless :block = type _sqlQuery\aliases -> _sqlFail "Expected alias block"
-            ]
-            any -> _sqlFail "Unknown SELECT attribute"
+import ./{parser.art}!
+
+; Freeze host computations before parsing, including arrow lookahead and nested bodies.
+_sqlFreeze: $[tokens] [
+    map tokens 'token [
+        (:block = type token) ? [_sqlFreeze token] [
+            (:inline = type token) ? [get _sqlValue token 'value] [token]
         ]
     ]
-    _sqlColumns: _sqlTake _sqlState
-    unless :block = type _sqlColumns -> _sqlFail "Expected column block"
-    if empty? _sqlColumns -> _sqlFail "Select requires columns"
-    _sqlColumnState: #[tokens: _sqlColumns position: 0]
-    _sqlNormalized: []
-    while [_sqlColumnState\position < size _sqlColumns] [
-        _sqlNormalized: append _sqlNormalized @[_sqlReference _sqlColumnState]
-    ]
-    _sqlColumns: _sqlNormalized
-    loop _sqlColumns '_sqlColumn [
-        if _sqlExpressions -> _sqlQuery\columns: append _sqlQuery\columns _sqlProjection _sqlColumn
-        unless _sqlExpressions [
-            unless or? contains? [:word :literal :path :pathliteral :string :type] type _sqlColumn "*" = _sqlIdentifierText _sqlColumn -> _sqlFail "Invalid column"
-            _sqlQuery\columns: append _sqlQuery\columns ((_sqlIdentifierText _sqlColumn) = "*") ? ["*"] [_sqlCheckedName _sqlColumn]
-        ]
-    ]
-    if contains? _sqlSeen "as" [
-        if (size _sqlQuery\aliases) <> size _sqlQuery\columns -> _sqlFail "Alias count must match projections"
-        loop _sqlQuery\aliases '_sqlAlias [
-            unless contains? [:word :literal :string :type] type _sqlAlias -> _sqlFail "Expected alias identifier"
-            ignoredAlias: _sqlCheckedName _sqlAlias
-        ]
-        loop _sqlColumns '_sqlColumn [
-            if and? :block <> type _sqlColumn contains? _sqlIdentifierText _sqlColumn "*" -> _sqlFail "Cannot alias wildcard"
-        ]
-    ]
-    if "from" <> _sqlText _sqlTake _sqlState -> _sqlFail "Expected from"
-    _sqlFrom: _sqlRelation _sqlState false
-    _sqlQuery\table: _sqlFrom\table
-    _sqlQuery\tableAlias: _sqlFrom\alias
-    _sqlQuery\joins: []
-    while ["join" = _sqlPeek _sqlState] [
-        ignored: _sqlTake _sqlState
-        _sqlJoin: _sqlRelation _sqlState true
-        _sqlArgument: _sqlTake _sqlState
-        (:block = type _sqlArgument) ? [
-            _sqlCondition: _sqlArgument
-        ] [
-            if "->" <> _sqlText _sqlArgument -> _sqlFail "Join requires a predicate block or -> expression"
-            if _sqlState\position < size _sqlInput -> if :block = type get _sqlInput _sqlState\position -> _sqlFail "Use join table [predicate] without ->"
-            _sqlCondition: []
-            while [_sqlState\position < size _sqlInput] [
-                _sqlNext: get _sqlInput _sqlState\position
-                if and? :word = type _sqlNext contains? ["join" "where" "orderBy" "limit" "offset"] _sqlIdentifierText _sqlNext -> break
-                _sqlCondition: append _sqlCondition @[_sqlTake _sqlState]
-            ]
-        ]
-        _sqlJoin\predicate: _sqlPredicate _sqlCondition
-        _sqlQuery\joins: append _sqlQuery\joins _sqlJoin
-    ]
-    _sqlStage: 0
-    while [_sqlState\position < size _sqlInput] [
-        _sqlClause: _sqlText _sqlTake _sqlState
-        case _sqlClause [
-            "where" [
-                if _sqlStage > 0 -> _sqlFail "where must precede ordering and pagination"
-                _sqlQuery\predicates: append _sqlQuery\predicates _sqlPredicate _sqlTake _sqlState
-            ]
-            "orderBy" [
-                if _sqlStage > 0 -> _sqlFail "Duplicate or misplaced orderBy"
-                _sqlStage: 1
-                _sqlOrderTokens: _sqlTake _sqlState
-                unless :block = type _sqlOrderTokens -> _sqlFail "Expected ordering block"
-                if empty? _sqlOrderTokens -> _sqlFail "Empty ordering block"
-                _sqlOrder: #[tokens: _sqlOrderTokens position: 0]
-                while [_sqlOrder\position < size _sqlOrder\tokens] [
-                    _sqlName: _sqlReadName _sqlOrder
-                    _sqlDirection: "asc"
-                    if contains? ["asc" "desc"] _sqlPeek _sqlOrder -> _sqlDirection: _sqlText _sqlTake _sqlOrder
-                    _sqlQuery\ordering: append _sqlQuery\ordering #[
-                        column: to :string _sqlName
-                        direction: _sqlDirection
-                    ]
-                ]
-            ]
-            "limit" [
-                if _sqlStage > 1 -> _sqlFail "Duplicate or misplaced limit"
-                _sqlStage: 2
-                _sqlQuery\limit: get _sqlValue _sqlTake _sqlState 'value
-            ]
-            "offset" [
-                if _sqlStage <> 2 -> _sqlFail "offset requires limit"
-                _sqlStage: 3
-                _sqlQuery\offset: get _sqlValue _sqlTake _sqlState 'value
-            ]
-            any -> _sqlFail "Unknown SQL clause"
-        ]
-    ]
-    loop @[_sqlQuery\limit _sqlQuery\offset] '_sqlPage [
-        unless null? _sqlPage [
-            unless :integer = type _sqlPage -> _sqlFail "Pagination requires integers"
-            if _sqlPage < 0 -> _sqlFail "Pagination cannot be negative"
-        ]
-    ]
-    _sqlQuery
 ]
+
+sql: $[_sqlInput] -> _sqlBuild _sqlFreeze _sqlInput
 
 _sqlQuotePart: $[name] -> join @["\"" replace name "\"" "\"\"" "\""]
 
@@ -330,6 +237,29 @@ _sqlQuote: $[name] -> join.with:"." map split.by:"." name 'part [
 
 _sqlRender: $[node output] [
     case node\kind [
+        "schemaValue" [
+            value: node\value
+            if null? value -> return "NULL"
+            if :logical = type value -> return value ? ["1"] ["0"]
+            if :string = type value -> return join @["'" replace value "'" "''" "'"]
+            return to :string value
+        ]
+        "alias" -> return join @[_sqlRender node\argument output " AS " _sqlQuote node\value]
+        "function" -> return join @[node\operator "(" join.with:", " map node\arguments 'argument -> _sqlRender argument output ")"]
+        "subquery" -> return join @["(" _sqlCompileInto node\query output ")"]
+        "quantified" -> _sqlFail "SQLite does not support ALL or ANY comparisons"
+        "exists" -> return join @["EXISTS " _sqlRender node\argument output]
+        "negation" -> return join @["NOT (" _sqlRender node\argument output ")"]
+        "in" -> return join @[_sqlRender node\left output " IN (" join.with:", " map node\arguments 'argument -> _sqlRender argument output ")"]
+        "between" -> return join @[_sqlRender node\left output " BETWEEN " _sqlRender first node\arguments output " AND " _sqlRender last node\arguments output]
+        "choose" [
+            result: "CASE"
+            loop node\branches 'branch [
+                result: join @[result " WHEN " _sqlRender branch\predicate output " THEN " _sqlRender branch\value output]
+            ]
+            unless null? node\fallback -> result: join @[result " ELSE " _sqlRender node\fallback output]
+            return append result " END"
+        ]
         "wildcard" -> return "*"
         "qualifiedWildcard" -> return _sqlQuote node\value
         "aggregate" -> return join @[node\operator "(" _sqlRender node\argument output ")"]
@@ -364,7 +294,7 @@ _sqlRender: $[node output] [
     ]
 ]
 
-_sqlCompile: $[data] [
+_sqlCompileSelect: $[data] [
     unless :dictionary = type data -> _sqlFail "Expected SQL query dictionary"
     loop [kind columns table predicates ordering limit offset] 'field [
         unless key? data field -> _sqlFail "Incomplete SQL query dictionary"
@@ -398,11 +328,23 @@ _sqlCompile: $[data] [
                 output\text "\n" relation\type " JOIN\n    " _sqlQuote relation\table
             ]
             unless null? relation\alias -> output\text: join @[output\text " AS " _sqlQuotePart relation\alias]
-            output\text: join @[output\text "\nON\n    " _sqlRender relation\predicate output]
+            unless relation\type = "CROSS" -> output\text: join @[output\text "\nON\n    " _sqlRender relation\predicate output]
         ]
     ]
     filters: map data\predicates 'predicate [_sqlRender predicate output]
     unless empty? filters -> output\text: join @[output\text "\nWHERE\n    " join.with:"\n    AND " filters]
+    if key? data 'details [
+        details: data\details
+        unless empty? details\groups [
+            if details\groupMode <> "" -> _sqlFail "SQLite does not support grouping extensions"
+            output\text: join @[output\text "\nGROUP BY\n    " join.with:", " map details\groups 'name -> _sqlQuote name]
+        ]
+    ]
+    if key? data 'details [
+        filters: map data\details\having 'predicate -> _sqlRender predicate output
+        unless empty? filters -> output\text: join @[output\text "\nHAVING\n    " join.with:"\n    AND " filters]
+        if data\details\fetch -> _sqlFail "SQLite does not support FETCH; use limit"
+    ]
     orders: map data\ordering 'order [
         join @[_sqlQuote order\column " " upper order\direction]
     ]
@@ -418,11 +360,14 @@ _sqlCompile: $[data] [
     output
 ]
 
+import ./{compiler.art}!
+
 ; Dictionary conversion matches constructor arguments by field name.
 
 define :sqliteQuery [
-    init: method [kind columns table predicates ordering limit offset distinct aliases tableAlias joins] [
+    init: method [kind columns table predicates ordering limit offset distinct aliases tableAlias joins details] [
         compiled: _sqlCompile #[
+            details: details
             tableAlias: tableAlias
             joins: (null? joins) ? [[]] [joins]
             distinct: distinct
@@ -445,7 +390,8 @@ define :sqliteQuery [
 sqliteExecute: $[db :database statement] [
     if :dictionary = type statement -> statement: to :sqliteQuery statement
     unless :sqliteQuery = type statement -> _sqlFail "Expected SQL query dictionary or sqliteQuery"
-    query.with: statement\params db statement\text
+    results: @[query.with: statement\params db statement\text]
+    (empty? results) ? [[]] [first results]
 ]
 
 ; Return terminal-ready text; keep execution results available via sqliteExecute.

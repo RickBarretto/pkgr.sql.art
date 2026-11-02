@@ -1,0 +1,116 @@
+; Schema literals are rendered from scalar AST nodes, never by replacing SQL text.
+_sqlSchemaData: $[value] [
+    if :block = type value -> return map value 'item -> _sqlSchemaData item
+    if :dictionary = type value [
+        result: #[]
+        loop keys value 'name -> set result name _sqlSchemaData get value name
+        if key? result 'kind -> if result\kind = "value" -> result\kind: "schemaValue"
+        return result
+    ]
+    value
+]
+
+; Compilers share one parameter accumulator, preserving SQL placeholder order.
+_sqlCompileInto: $[nestedData sink] [
+    compiled: _sqlCompile nestedData
+    sink\params: append sink\params compiled\params
+    compiled\text
+]
+
+_sqlDefinition: $[definition output] [
+    case definition\kind [
+        "column" [
+            storage: definition\storage
+            case storage [
+                "string" [storage: "TEXT"]
+                "integer" [storage: "INTEGER"]
+            "logical" [storage: "INTEGER"]
+                "floating" [storage: "REAL"]
+                "binary" [storage: "BLOB"]
+                any -> _sqlFail "Unsupported SQLite storage type"
+            ]
+            flags: definition\flags
+            if key? flags 'identity -> _sqlFail "SQLite does not support GENERATED AS IDENTITY"
+            result: join @[_sqlQuote definition\name " " storage]
+            unless key? flags 'optional -> result: append result " NOT NULL"
+            if key? flags 'primary -> result: append result " PRIMARY KEY"
+            if key? flags 'unique -> result: append result " UNIQUE"
+            return result
+        ]
+        "check" -> return join @["CHECK (" _sqlRender _sqlSchemaData definition\predicate output ")"]
+        "reference" -> return join @["FOREIGN KEY (" join.with:", " map definition\columns 'name -> _sqlQuote name ") REFERENCES " _sqlQuote definition\target " (" join.with:", " map definition\targets 'name -> _sqlQuote name ")"]
+        "remove" -> return join @["DROP COLUMN " _sqlQuote definition\name]
+        "rename" -> return join @["RENAME TO " _sqlQuote definition\name]
+        any -> _sqlFail "Invalid schema definition"
+    ]
+]
+
+_sqlCompile: $[data] [
+    unless :dictionary = type data -> _sqlFail "Expected SQL dictionary"
+    unless key? data 'kind -> _sqlFail "Missing statement kind"
+    if data\kind = "select" [
+        output: _sqlCompileSelect data
+        if key? data 'details [
+            cteOutput: #[text: "" params: []]
+            entries: map data\details\ctes 'entry -> join @[_sqlQuote entry\name " AS (" _sqlCompileInto entry\statement cteOutput ")"]
+            unless empty? entries [
+                output\text: join @["WITH " join.with:",\n" entries "\n" output\text]
+                output\params: append cteOutput\params output\params
+            ]
+        ]
+        return output
+    ]
+    output: #[text: "" params: []]
+    details: data\details
+    options: details\options
+    table: _sqlQuote data\table
+    case data\kind [
+        "combine" [
+            output\text: join.with: join @["\n" details\operator "\n"] map details\queries 'statement -> _sqlCompileInto statement output
+        ]
+        "drop" [output\text: join @["DROP " (key? options 'view) ? ["VIEW "] ["TABLE "] table]]
+        "truncate" -> _sqlFail "SQLite does not support TRUNCATE; use delete"
+        "create" [
+            if key? options 'view [
+                output\text: join @["CREATE VIEW " table " AS\n" _sqlCompileInto _sqlSchemaData details\statement output]
+                return output
+            ]
+            if key? options 'trigger [
+                timings: select ["before" "after"] 'flag -> key? options flag
+                events: select ["insert" "update" "delete"] 'flag -> key? options flag
+                unless and? 1 = size timings 1 = size events -> _sqlFail "Trigger requires timing and event"
+                unless key? options 'on -> _sqlFail "Trigger requires table"
+                if empty? details\statements -> _sqlFail "Empty trigger body"
+                triggerHeader: join @["CREATE TRIGGER " table " " upper first timings " " upper first events "\nON " _sqlQuote _sqlCheckedName get options 'on "\nBEGIN\n"]
+                statements: map details\statements 'statement [
+                    nestedStatement: _sqlSchemaData statement
+                    nestedCompiled: _sqlCompile nestedStatement
+                    nestedCompiled\text
+                ]
+                output\text: join @[triggerHeader join.with:";\n" statements ";\nEND"]
+                return output
+            ]
+            output\text: join @["CREATE TABLE " table " (\n    " join.with:",\n    " map details\definitions 'definition -> _sqlDefinition definition output "\n)"]
+        ]
+        "alter" [
+            if 1 <> size details\definitions -> _sqlFail "SQLite accepts one alteration per statement"
+            definition: first details\definitions
+            output\text: join @["ALTER TABLE " table " " (definition\kind = "column") ? ["ADD COLUMN "] [""] _sqlDefinition definition output]
+        ]
+        "insert" [
+            rows: map details\rows 'row -> join @["(" join.with:", " map row 'value -> _sqlRender value output ")"]
+            output\text: join @["INSERT INTO " table " (" join.with:", " map details\fields 'name -> _sqlQuote name ")\nVALUES\n    " join.with:",\n    " rows]
+        ]
+        "update" [
+            assignments: map details\assignments 'assignment -> join @[_sqlQuote assignment\name " = " _sqlRender assignment\value output]
+            output\text: join @["UPDATE " table "\nSET\n    " join.with:",\n    " assignments]
+        ]
+        "delete" [output\text: join @["DELETE\nFROM " table]]
+        any -> _sqlFail "Unsupported statement kind"
+    ]
+    unless empty? data\predicates [
+        filters: map data\predicates 'predicate -> _sqlRender predicate output
+        output\text: join @[output\text "\nWHERE\n    " join.with:"\n    AND " filters]
+    ]
+    output
+]

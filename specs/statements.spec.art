@@ -1,0 +1,76 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "Schema and write API execution" [
+    it "creates, inserts, updates, alters, queries and deletes" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            ignored: sqliteExecute db sql [create :books [
+                column.primary id :integer
+                column title :string
+                column.optional subtitle :string
+                column available :logical
+                check [id > 0]
+            ]]
+            statement: sql [insert.columns: [id title subtitle available] :books [
+                row [1 "River's Atlas" null true]
+                row [2 "Quiet Maps" "Maps" false]
+            ]]
+            compiled: to :sqliteQuery statement
+            expects.be: 'equal? @[compiled\params @[1 "River's Atlas" null 1 2 "Quiet Maps" "Maps" 0]]
+            ignored: sqliteExecute db compiled
+            ignored: sqliteExecute db sql [update.values: [available: true] :books [where [id = 2]]]
+            ignored: sqliteExecute db sql [alter :books -> add.optional pages :integer]
+            ignored: sqliteExecute db sql [update :books [assign pages 400 where [id = 1]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :books select title where [available = true] order id] [["River's Atlas"] ["Quiet Maps"]]]
+            ignored: sqliteExecute db sql [delete :books [where [id = 2]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :books select count "*"] [["1"]]]
+            ignored: sqliteExecute db sql [alter :books -> remove pages]
+            ignored: sqliteExecute db sql [alter :books -> rename :catalog]
+            ignored: sqliteExecute db sql [drop :catalog]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+
+    it "executes views, triggers and safely quoted schema values" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            ignored: sqliteExecute db sql [create :books [column.primary id :integer column title :string column available :logical]]
+            ignored: sqliteExecute db sql [create :loans [column bookId :integer reference bookId :books id]]
+            ignored: sqliteExecute db sql [insert :books [columns [id title available] row [1 "River's Atlas" true]]]
+            viewStatement: sql [create.view :riverBooks [from :books select title where [title = "River's Atlas"]]]
+            compiled: to :sqliteQuery viewStatement
+            expects.be: 'equal? @[compiled\params []]
+            ignored: sqliteExecute db compiled
+            expects.be: 'equal? @[sqliteExecute db sql [from :riverBooks select title] [["River's Atlas"]]]
+            ignored: sqliteExecute db sql [create.trigger.after.insert.on: :loans :loanAdded [
+                update :books [assign available false where [id = new\bookId]]
+            ]]
+            ignored: sqliteExecute db sql [insert :loans [columns bookId row [1]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from :books select available] [["0"]]]
+            ignored: sqliteExecute db sql [drop.view :riverBooks]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+
+    it "executes cross joins, sets and correlated subqueries" [
+        db: open.sqlite ":memory:"
+        failure: try [
+            ignored: sqliteExecute db sql [create :books [column id :integer column genre :string column pages :integer]]
+            ignored: sqliteExecute db sql [insert :books [columns [id genre pages] row [1 "Poetry" 100] row [2 "Poetry" 200] row [3 "History" 300]]]
+            expects.be: 'equal? @[sqliteExecute db sql [
+                from.as: b :books select b\id
+                where [b\pages > query [from.as: peer :books select.avg peer\pages where [peer\genre = b\genre]]]
+            ] [["2"]]]
+            expects.be: 'equal? @[sqliteExecute db sql [from.as: b :books cross.as: peer :books select count "*"] [["9"]]]
+            expects.be: 'equal? @[sqliteExecute db sql [combine.union [
+                sql [from :books select genre where [id = 1]]
+                sql [from :books select genre where [id = 2]]
+            ]] [["Poetry"]]]
+        ]
+        close db
+        unless null? failure -> throw to :string failure
+    ]
+]

@@ -1,0 +1,140 @@
+import {unitt}!
+import {src/lib.art}!
+
+describe "Function API" [
+    it "captures identifiers and appends projections, filters and sort keys in any order" [
+        books: "unrelated"
+        compiled: to :sqliteQuery sql [
+            where -> and publishedYear >= 2020 available = true
+            order.desc 'publishedYear
+            from :books
+            select.as: 'name 'title
+            select 'id
+            order 'id
+            limit.skip: 2 5
+        ]
+        expects.be: 'equal? @[compiled\params [2020 1 5 2]]
+        expects.be: 'equal? @[contains? compiled\text {"title" AS "name"} true]
+        expects.be: 'equal? @[contains? compiled\text {"publishedYear" DESC,} true]
+        expects.be: 'equal? @[contains? compiled\text {"books"} true]
+    ]
+
+    it "captures host computations once even during arrow lookahead" [
+        counter: #[calls: 0]
+        nextValue: $[] [counter\calls: counter\calls + 1 counter\calls]
+        captured: @[sql [from :books select id where -> id > (nextValue)]]
+        expects.be: 'equal? @[size captured 1]
+        expects.be: 'equal? @[counter\calls 1]
+        statement: first captured
+        compiled: to :sqliteQuery statement
+        expects.be: 'equal? @[compiled\params [1]]
+        ignored: to :sqliteQuery statement
+        expects.be: 'equal? @[counter\calls 1]
+    ]
+
+    it "uses fixed arity for arrow predicates" [
+        compiled: to :sqliteQuery sql [
+            from :books
+            where -> or title = "A" title = "B"
+            select title
+            where -> not [available = false]
+        ]
+        expects.be: 'equal? @[compiled\params ["A" "B" 0]]
+        expects.be: 'equal? @[contains? compiled\text {NOT ("available" = ?)} true]
+    ]
+
+    it "binds IN, BETWEEN and LIKE values and normalizes less or equal" [
+        compiled: to :sqliteQuery sql [
+            from :books select title
+            where [genre in ["Poetry" "History"]]
+            where [publishedYear between [2015 2020]]
+            where [title like "River%"]
+            where [pageCount =< 400]
+        ]
+        expects.be: 'equal? @[compiled\params ["Poetry" "History" 2015 2020 "River%" 400]]
+        expects.be: 'equal? @[contains? compiled\text {"pageCount" <= ?} true]
+    ]
+
+    it "composes aggregates, conditional expressions and grouping" [
+        compiled: to :sqliteQuery sql [
+            from :books select genre
+            select.count.as: 'total "*"
+            select avg pageCount
+            select coalesce [subtitle title]
+            select nullif pageCount 0
+            select.as: 'length choose.default: "Short" [when [pageCount > 400] "Long"]
+            group genre having [[count "*"] > 3]
+        ]
+        expects.be: 'equal? @[compiled\params [0 400 "Long" "Short" 3]]
+        expects.be: 'equal? @[contains? compiled\text {COUNT(*) AS "total"} true]
+        expects.be: 'equal? @[contains? compiled\text {GROUP BY
+    "genre"
+HAVING
+    COUNT(*) > ?} true]
+    ]
+
+    it "compiles CTE and nested query parameters in textual order" [
+        statement: sql [
+            with :recent [from :books select id where [publishedYear > 2020]]
+            from :recent select id
+            where [id > query [from :books select.min id where [available = true]]]
+            where [exists query [from :books select [id title] where [id > 3]]]
+        ]
+        snapshot: new statement
+        compiled: to :sqliteQuery statement
+        expects.be: 'equal? @[compiled\params [2020 1 3]]
+        expects.be: 'equal? @[statement snapshot]
+        expects.be: 'equal? @[compiled to :sqliteQuery statement]
+    ]
+
+    it "keeps DSL helpers local and native functions intact" [
+        before: symbols
+        ignored: sql [from :books select count "*"]
+        expects.be: 'equal? @[select [1 2 3] 'n -> n > 1 [2 3]]
+        expects.be: 'equal? @[contains? symbols 'column contains? before 'column]
+    ]
+
+    it "rejects malformed contracts and owner context violations" [
+        loop [
+            [from :books select []]
+            [from :books from :loans select title]
+            [from :books select.count.sum title]
+            [from :books select.count: true title]
+            [from :books select.sum "*"]
+            [from :books select.as: [a b] title]
+            [from :books select title order.asc.desc title]
+            [from :books select title where [id in []]]
+            [from :books select title where [id between [1]]]
+            [from :books select title where [id > query [from :books select [id title]]]]
+            [create :books [select title]]
+            [create :books [column.primary.optional id :integer]]
+            [insert :books [row [1]]]
+            [insert :books [columns [id title] row [1]]]
+            [update :books []]
+            [delete :books [assign id 1]]
+            [combine.union [sql [from :books select title]]]
+            [combine.union [sql [from :books select title] sql [from :books select [id title]]]]
+            [from :books select title limit.skip: 1 2 offset 1]
+        ] '_apiInput [
+            failure: try [ignored: sql _apiInput]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+
+    it "reports unsupported SQLite features explicitly" [
+        loop [
+            [from :books select title fetch 2]
+            [from :books select genre group.rollup genre]
+            [from :books select genre group.cube genre]
+            [from :books select genre group.sets [[genre] []]]
+            [from :books select title where [id > all query [from :books select id]]]
+            [from :books select title where [id > any query [from :books select id]]]
+            [create :books [column.identity id :integer]]
+            [truncate :books]
+        ] '_apiInput [
+            statement: sql _apiInput
+            failure: try [ignored: to :sqliteQuery statement]
+            expects.be: 'equal? @[type failure :error]
+        ]
+    ]
+]
