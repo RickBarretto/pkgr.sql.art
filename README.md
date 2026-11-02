@@ -1,49 +1,50 @@
-# Template for Arturo Packages
+<h1 align="center">sql</h1>
 
-This template is intented to be used for the creation of
-new Arturo Packages.
+<p align="center">
+    <i>An SQL Builder for Arturo</i>
+    <br><br><br>
+    <img
+        src=./docs/icons/arturo-light-mode.png#gh-light-mode-only
+        alt=Arturo logo
+        width=20
+    />
+    <img
+        src=./docs/icons/arturo-dark-mode.png#gh-dark-mode-only
+        alt=Arturo logo
+        width=20
+    />
+    <br>
+    <b>~ CODE IS ART ~</b>
+    <br><br>
+</p>
 
-## Features
+<p align="center">
+    <a href="https://www.arturo-lang.io"><img src="https://img.shields.io/badge/language-Arturo-6A156B.svg?&style=flat&colorA=000000&colorB=000000" alt="Language: Arturo"/></a>
+    &nbsp;
+    <a href="https://github.com/RickBarretto/pkgr.sql.art/blob/main/LICENSE"><img src="https://img.shields.io/github/license/RickBarretto/pkgr.sql.art?&style=flat&colorA=000000&colorB=000000" alt="License"/></a>
+    &nbsp;
+    <a href="https://github.com/RickBarretto/pkgr.sql.art/actions"><img src="https://img.shields.io/github/actions/workflow/status/RickBarretto/pkgr.sql.art/test.yml?branch=main&style=flat&colorA=000000&colorB=000000" alt="CI Status"/></a>
+</p>
 
-### Carefully designed fashion README
+## At a Glance
 
-The readme was carefully designed to maintain consistency across packages:
+<p align="center">
+    <img alt="At a Glance" width="720"
+    src="./docs/images/"
+    />
+</p>
 
-- Custom Badges
-- Quick Presentation
-- Autotamized installation guide
+## Installation
 
-### Common structure
+```sh
+arturo -p install sql
+```
 
-This templates ships a common structure:
+or
 
-- `.github`: Github Integration.
-- `.vscode`: VsCode Integration.
-- `docs`: Documentation.
-- `examples`: Usage Examples.
-- `specs`: All kind of Tests.
-- `src`: Source Code
+```art
+import {sql}!
+```
 
-### Better defaults
+## Documentation
 
-- Integrates with `unitt`, ou main testing library.
-  - Comes with its best default.
-- Integrates with Github CI
-  - Uses our modern way of using Arturo on CI, via it's official action.
-
-### Ready to Use
-
-- No spending time trying to keep README consistency
-- Ready to ship to pkgr.art
-- CI integration since its first commit
-
-## Usage
-
-1. Create a new repository using it as template
-    1. <img src="./template/docs/create-from-template.png" alt="Step 1: Create from Template" width="600" style="max-width:100%;height:auto;" />
-2. On Github, create a `LICENSE` file and choose your license using their templates
-    1. On Github, reate a new file: <img src="./template/docs/create-new-file.png" alt="Step 2.1: Create file on Github" width="600" style="max-width:100%;height:auto;" />
-    2. Name this file and `LICENSE` and click in "Choose a License": <img src="./template/docs/name-license-file.png" alt="Step 2.2: Name it as LICENSE and choose a template" width="600" style="max-width:100%;height:auto;" />
-    3. Choose your favorite License, review and submit a commit: <img src="./template/docs/review-and-submit-license.png" alt="Step 2.3: Choose your License and submit" width="600" style="max-width:100%;height:auto;" />
-3. Run `arturo boot.art` and follow the instructions.
-  Don't worry, this script will delete itself and the useless files for your project.

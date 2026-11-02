@@ -1,2 +1,0 @@
-define :Repository [owner :string name :string]
-define :Package [name :string description :string]

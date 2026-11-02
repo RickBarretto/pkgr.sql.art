@@ -1,0 +1,4 @@
+import ./{lib}!
+
+if standalone? ::
+	inspect double 3
