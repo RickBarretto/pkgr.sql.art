@@ -1,20 +1,19 @@
 # Writing readable SQL blocks
 
-These suggestions help keep queries easy to scan as they grow. The
-[API reference](API.md) documents accepted inputs and dialect support.
+Write queries so readers can find the source, selected columns, and filters at
+a glance. This guide recommends a consistent style. For accepted inputs and
+validation rules, see the [API reference](API.md).
 
-## Use consistent names and layout
+## Put one command on each line
 
-Use four spaces for indentation and one command per line. 
-A useful query order is: 
-1. source and joins, 
-2. projections, 
-3. filters, 
-4. grouping, 
-4. sorting, 
-5. then pagination. 
+Use four spaces for indentation. Keep related clauses together in this order:
 
-The compiler accepts clauses in any order:
+1. Source and joins
+2. Selected columns
+3. Filters
+4. Grouping and group filters
+5. Sorting
+6. Pagination
 
 ```art
 statement: sql [
@@ -27,27 +26,29 @@ statement: sql [
 ]
 ```
 
-Choose descriptive lowerCamelCase names and short aliases that are easy to
-recognize. Once a table has an alias, use that alias for qualified columns.
+The compiler accepts clauses in any order; a consistent layout helps readers.
 
-Use an explicit literal for a column whose name matches a helper, such as
-`select 'count`.
+## Choose names readers can follow
 
-Here is the preferred form of usage for each argument:
+Use descriptive lowerCamelCase names. Keep aliases short and recognizable,
+such as `b` for books and `p` for publishers. Once a table has an alias, use it
+for qualified columns.
 
-| Use | Preferred form | Other accepted forms |
-| --- | --- | --- |
-| Table | `:books` | `'books`, `"books"`, `main\books`, `'main\books`, captured `books` |
-| Column | `'title` | `:title`, `"title"`, captured `title` |
-| Qualified column | `'b\title` | captured `b\title` |
-| Alias | `'b` | `"b"`, captured `b` |
+| Use | Preferred form |
+| --- | --- |
+| Table | `:books` |
+| Column | `'title` |
+| Qualified column | `'b\title` |
+| Alias | `'b` |
+| Column list | `[title publishedYear]` |
 
+Use an explicit literal for names that match a helper: `select 'count`.
+The [identifier reference](API.md#identifiers-and-values) lists other accepted forms.
 
 ## Make application values visible
 
-Use `@name` for Arturo variables and parentheses for computations. This distinguishes
-application values from SQL column names and captures the value when the
-statement is built.
+Use `@name` for an Arturo variable. Use parentheses when you need an Arturo
+computation. Both capture the result when the statement is built.
 
 ```art
 minimumYear: 2020
@@ -58,21 +59,19 @@ statement: sql [
 ]
 ```
 
-Use paths such as `b\title` for qualified columns. Strings in predicates and
-rows are values; strings in identifier positions name columns or tables.
-
 ## Match brackets to their purpose
 
-Pass individual identifiers directly: `select 'title`, `order 'title`,
-`group 'genre`. Use blocks for lists, such as `select [title publishedYear]`,
-and for rows, such as `row ["River Atlas"]`.
+| Purpose | Example |
+| --- | --- |
+| One identifier | `select 'title` |
+| A list | `select [title publishedYear]` |
+| Row data | `row ["River Atlas"]` |
+| One-expression body | `alter :books -> add.optional 'subtitle :string` |
+| Several commands or nested grouping | `[...]` |
 
-A body containing one complete call or predicate can use `->`. Keep explicit
-blocks for several commands or nested grouping.
+Use `->` only when the body is one complete expression:
 
 ```art
-statement: sql [alter :books -> add.optional 'subtitle :string]
-
 statement: sql [
     from :books
     select 'title
@@ -80,14 +79,14 @@ statement: sql [
 ]
 ```
 
-An arrow wraps one expression. Line breaks do not supply missing arguments or
-extend a call's body.
+> [!IMPORTANT]
+> Line breaks do not end calls or extend an arrow's body. Each command still
+> needs all its arguments.
 
 ## Keep filters easy to follow
 
-Use repeated `where` calls for independent conditions that must all hold. Use
-prefix `or` or `and` when the grouping matters, with blocks around nested
-conditions. Comparisons use infix operators; `=<` and `<=` are both supported.
+Use separate `where` calls for conditions that must all hold. For alternatives,
+use prefix `or`. Add blocks around nested conditions so the grouping is visible.
 
 ```art
 statement: sql [
@@ -102,14 +101,12 @@ statement: sql [
 ]
 ```
 
-Each prefix `and` or `or` takes two predicates; `not` takes one. Keep each
-operand visible when nesting them. Use `is null` and `is not null` for null
-tests.
+Keep both operands visible when nesting `and` or `or`. Use `is null` and
+`is not null` for null tests. See [predicates](API.md#predicates) for the full syntax.
 
-## Compose calculated columns directly
+## Give calculated columns useful aliases
 
-Give calculated projections useful aliases. Both `select.avg 'pageCount` and
-`select avg 'pageCount` work; use a consistent form within a query.
+Use separate `select` calls to mix ordinary columns with calculations:
 
 ```art
 statement: sql [
@@ -122,13 +119,13 @@ statement: sql [
 ]
 ```
 
-Use repeated `select` calls to mix identifier lists and calculated projections.
-Repeated `order` calls also make mixed sort directions easy to read.
+Both `select.avg 'pageCount` and `select avg 'pageCount` work. Choose a consistent
+form within a query.
 
-## Make nullability and write scope explicit
+## Show the shape of your data
 
-Columns are NOT NULL by default. Use `.optional` when a missing value is
-meaningful. Choose insert columns explicitly so each row's value order is clear.
+Mark nullable columns with `.optional`. Name insert columns explicitly so readers
+can match each row's values to its columns.
 
 ```art
 statement: sql [create :books [
@@ -142,13 +139,13 @@ statement: sql [insert.columns: [id title subtitle] :books [
 ]]
 ```
 
-Keep update and delete filters next to their assignments or target table.
-Omitting `where` affects every row.
+For updates and deletes, keep filters close to the target table and assignments.
+Use an unfiltered write only when you intend to change the whole table; see
+[write scope](API.md#inserts-updates-and-deletes).
 
 ## Order pages consistently
 
-Specify an order when paginating. Include a unique key to make the order
-stable when other sort values tie.
+When paginating, include a unique key in the sort order to break ties:
 
 ```art
 statement: sql [
@@ -160,14 +157,13 @@ statement: sql [
 ]
 ```
 
-## Keep execution and presentation clear
+Here, `id` gives books with the same title a consistent order.
 
-Name a statement when you want to inspect it, compile it for another dialect,
-or pass it to an execution helper. Use `sql.query:` with an open SQLite
-connection to get rows, and format those rows separately when needed. Close
-connections after use, including when execution fails; the
-[execution example](API.md#execution-and-formatting) shows the cleanup pattern.
+## Name statements you will reuse
 
-For PostgreSQL, compile with `to :postgresQuery` and pass its SQL and parameters
-to your driver. The [compiled-output reference](API.md#compiled-output) explains
-multi-statement trigger output and dialect differences.
+Give a statement a name when you want to inspect it, compile it for another
+dialect, or pass it to an execution helper. Keep result formatting separate
+when it makes the data flow easier to follow.
+
+For connection cleanup and table formatting, use the patterns in
+[execution and formatting](API.md#execution-and-formatting).

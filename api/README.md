@@ -1,182 +1,46 @@
-# SQL function API catalog
+# SQL feature catalog
 
-This catalog documents the implemented Arturo API for the features in the
-[SQLTutorial learning sequence](https://www.sqltutorial.org/). Examples use an
-original book catalog. The library implements these contracts; see the root README for SQLite dialect limitations.
+Find examples by SQL feature below. The catalog follows the
+[SQLTutorial learning sequence](https://www.sqltutorial.org/) and uses a book
+database throughout.
 
-Start with [the writing guide](STYLE.md) and [the function contracts](API.md),
-then `select/select.art`, `sort/order-by.art`,
-and the feature list below. Every feature has alternatives above `---`; the SQL
-below it is the reference output. `---` is Arturo’s end-of-file string syntax.
-SQL reference values are shown inline for readability; actual values should be
-bound parameters. Identifiers should be quoted by the compiler.
+For command arguments, see the [API reference](API.md). For layout and naming,
+see the [style guide](STYLE.md).
 
-## Reading the API
+## How to read an example
 
-```art
-sql [
-    create :books [
-        column.primary 'id :integer
-        column 'title :string
-    ]
-]
+Each `.art` file contains:
 
-sql [
-    create.view :recentBooks [
-        from :books
-        select [id title]
-        where [publishedYear >= 2020]
-    ]
-]
-```
+1. **Arturo examples** above `---`, showing alternative ways to build a statement.
+2. **Reference SQL** below `---`, showing the intended SQL operation.
 
-`sql [...]` provides the scope for every DSL function, including creation and
-write commands. `sql` constructs statements; `sql.query:` executes them against SQLite.
-`sqliteExecute` and `sqliteTable` are also public compatibility helpers.
-DSL commands such as `select` remain scoped. See the
-[execution contracts](API.md#execution-and-formatting).
-Functions have fixed positional arguments. `create` and `create.view` both take
-an identifier and a body block. A body is needed even for one command; use `->` when it contains one complete
-expression and `[...]` when it contains several commands. Single identifiers need no block: `select 'title`,
-`order 'title`, and `group 'genre`. Lists and grouped expressions keep theirs.
+`---` begins an Arturo end-of-file string. The alternatives show different
+argument forms or helper compositions for the same operation.
 
-Columns default to NOT NULL. Use `column.optional` or `add.optional` for nullable
-fields; `.required` is unnecessary.
+> [!NOTE]
+> Reference SQL shows values inline for readability. Compiled queries normally
+> use bind parameters and quoted identifiers. See
+> [compiled output](API.md#compiled-output) for dialect support and exceptions.
 
-Attributes refine a function, rather than defining a second spelling for it:
-`create.view`, `join.left`, `select.count`, `order.desc`, and `group.rollup`.
-There are no dummy positional arguments or implicit “until the next clause”
-bodies. Repeated `select` calls append projections; repeated `where` calls
-combine conditions with AND. Named boolean functions use prefix calls:
-`and predicate1 predicate2`, `or predicate1 predicate2`, and `not predicate`.
-Query clauses can be expressed in a readable order;
-the compiler arranges the resulting SQL.
+Start with [select](select/select.art) and [ordering](sort/order-by.art), or
+choose a feature:
 
-Calculated projections compose functions naturally: `select avg 'pageCount` or
-`select coalesce [subtitle title]`. `select` consumes their result as its one
-argument, without an expression-mode attribute.
+## Features
 
-The preferred table identifier is `:books`. Identifiers also accept `:path`,
-`:pathliteral` (Arturo’s spelling of literalPath), `:literal`, and `:string`.
-Words are accepted inside captured DSL bodies and identifier lists. They are
-not assumed to be literal identifiers during ordinary Arturo evaluation.
-See [identifier handling](API.md#identifiers-and-values) for examples and the
-difference between an identifier string and a bound string value.
-
-Alternatives explore the same contracts: a scalar versus a one-item list,
-a projection attribute versus a composed helper call, bulk assignments, or a different
-identifier form. They do not add interchangeable names for every function.
-
-## Validation and scope
-
-The specifications exercise construction, conversion and SQLite execution.
-SQLite translates FETCH to LIMIT/OFFSET and rejects identity columns, TRUNCATE,
-grouping extensions and quantified comparisons. PostgreSQL compilation supports
-all of these forms. RIGHT/FULL joins in SQLite depend on the bundled version.
-PostgreSQL output is compiler-tested; no server execution adapter is included.
-
-## Querying data
-
-- [select](select/select.art).
-
-## Sorting rows
-
-- [order-by](sort/order-by.art).
-
-## Limiting rows
-
-- [distinct](limit/distinct.art).
-- [limit](limit/limit.art).
-- [fetch](limit/fetch.art).
-
-## Filtering rows
-
-- [where](filter/where.art).
-- [and](filter/and.art).
-- [or](filter/or.art).
-- [between](filter/between.art).
-- [in](filter/in.art).
-- [like](filter/like.art).
-- [is-null](filter/is-null.art).
-- [not](filter/not.art).
-
-## Joining tables
-
-- [inner-join](join/inner-join.art).
-- [left-join](join/left-join.art).
-- [right-join](join/right-join.art).
-- [full-outer-join](join/full-outer-join.art).
-- [cross-join](join/cross-join.art).
-- [self-join](join/self-join.art).
-
-## Grouping rows
-
-- [group-by](group/group-by.art).
-- [having](group/having.art).
-- [grouping-sets](group/grouping-sets.art).
-- [rollup](group/rollup.art).
-- [cube](group/cube.art).
-
-## Set operators
-
-- [union](set/union.art).
-- [intersect](set/intersect.art).
-- [minus](set/minus.art).
-
-## Working with tables
-
-- [create-table](tables/create-table.art).
-- [primary-key](tables/primary-key.art).
-- [not-null](tables/not-null.art).
-- [drop-table](tables/drop-table.art).
-- [add-column](tables/add-column.art).
-- [drop-column](tables/drop-column.art).
-- [foreign-key](tables/foreign-key.art).
-- [unique](tables/unique.art).
-- [check](tables/check.art).
-- [alter-table](tables/alter-table.art).
-- [identity-column](tables/identity-column.art).
-
-## Modifying data
-
-- [insert](change/insert.art).
-- [update](change/update.art).
-- [delete](change/delete.art).
-- [truncate-table](change/truncate-table.art).
-
-## Views
-
-- [views](views/views.art).
-
-## Triggers
-
-- [triggers](trigger/triggers.art).
-
-## Conditional expressions
-
-- [case](conditions/case.art).
-- [coalesce](conditions/coalesce.art).
-- [nullif](conditions/nullif.art).
-
-## Aggregate functions
-
-- [aggregate-functions](aggregate/aggregate-functions.art).
-- [avg](aggregate/avg.art).
-- [count](aggregate/count.art).
-- [sum](aggregate/sum.art).
-- [max](aggregate/max.art).
-- [min](aggregate/min.art).
-
-## Subqueries
-
-- [subquery](subquery/subquery.art).
-- [correlated-subquery](subquery/correlated-subquery.art).
-- [exists](subquery/exists.art).
-- [all](subquery/all.art).
-- [any](subquery/any.art).
-
-## Common table expressions
-
-CTEs are grouped under `subquery/`.
-
-- [with](subquery/with.art).
+| Topic | Examples |
+| --- | --- |
+| Querying data | [select](select/select.art) |
+| Sorting rows | [order-by](sort/order-by.art) |
+| Limiting rows | [distinct](limit/distinct.art), [limit](limit/limit.art), [fetch](limit/fetch.art) |
+| Filtering rows | [where](filter/where.art), [and](filter/and.art), [or](filter/or.art), [between](filter/between.art), [in](filter/in.art), [like](filter/like.art), [is-null](filter/is-null.art), [not](filter/not.art) |
+| Joining tables | [inner-join](join/inner-join.art), [left-join](join/left-join.art), [right-join](join/right-join.art), [full-outer-join](join/full-outer-join.art), [cross-join](join/cross-join.art), [self-join](join/self-join.art) |
+| Grouping rows | [group-by](group/group-by.art), [having](group/having.art), [grouping-sets](group/grouping-sets.art), [rollup](group/rollup.art), [cube](group/cube.art) |
+| Set operators | [union](set/union.art), [intersect](set/intersect.art), [minus](set/minus.art) |
+| Working with tables | [create-table](tables/create-table.art), [primary-key](tables/primary-key.art), [not-null](tables/not-null.art), [drop-table](tables/drop-table.art), [add-column](tables/add-column.art), [drop-column](tables/drop-column.art), [foreign-key](tables/foreign-key.art), [unique](tables/unique.art), [check](tables/check.art), [alter-table](tables/alter-table.art), [identity-column](tables/identity-column.art) |
+| Modifying data | [insert](change/insert.art), [update](change/update.art), [delete](change/delete.art), [truncate-table](change/truncate-table.art) |
+| Views | [views](views/views.art) |
+| Triggers | [triggers](trigger/triggers.art) |
+| Conditional expressions | [case](conditions/case.art), [coalesce](conditions/coalesce.art), [nullif](conditions/nullif.art) |
+| Aggregate functions | [aggregate-functions](aggregate/aggregate-functions.art), [avg](aggregate/avg.art), [count](aggregate/count.art), [sum](aggregate/sum.art), [max](aggregate/max.art), [min](aggregate/min.art) |
+| Subqueries | [subquery](subquery/subquery.art), [correlated-subquery](subquery/correlated-subquery.art), [exists](subquery/exists.art), [all](subquery/all.art), [any](subquery/any.art) |
+| Common table expressions | [with](subquery/with.art) |

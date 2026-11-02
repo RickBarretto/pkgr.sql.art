@@ -1,32 +1,36 @@
 # SQL API reference
 
-Build SQL statements with Arturo blocks, compile them for SQLite or PostgreSQL,
-and execute SQLite statements with an open Arturo database connection.
+Use this reference for command arguments, validation rules, and compiled output.
+For installation and a first query, start with the [quick start](../README.md#quick-start).
+The [style guide](STYLE.md) covers layout; the [feature catalog](README.md)
+provides more examples.
 
-Requires Arturo 0.10.0 or newer.
+## On this page
 
-```art
-import {sql}!
+- [Identifiers and values](#identifiers-and-values)
+- [Query commands](#query-commands)
+- [Predicates](#predicates)
+- [Expressions and aggregates](#expressions-and-aggregates)
+- [Subqueries, CTEs, and set operations](#subqueries-ctes-and-set-operations)
+- [Tables and constraints](#tables-and-constraints)
+- [Inserts, updates, and deletes](#inserts-updates-and-deletes)
+- [Views and triggers](#views-and-triggers)
+- [Compiled output](#compiled-output)
+- [Execution and formatting](#execution-and-formatting)
+- [Compatibility syntax](#compatibility-syntax)
 
-minimumYear: 2020
-statement: sql [
-    from :books
-    select [title publishedYear]
-    where [publishedYear >= @minimumYear]
-    order.desc 'publishedYear
-    limit 10
-]
-compiled: to :sqliteQuery statement
-print compiled\text
-inspect compiled\params
-```
+## Statement basics
 
-`sql [...]` returns a statement dictionary. Conversion returns SQL text and
-parameters without executing SQL or changing that dictionary. Use
-`to :postgresQuery statement` to compile the same statement for PostgreSQL.
+`sql [...]` builds a statement dictionary. Every DSL command belongs inside
+that block or one of its nested bodies. Importing the package leaves Arturo's
+built-in functions intact.
 
-See the [writing guide](STYLE.md) for layout and naming suggestions and the
-[feature catalog](README.md) for more examples.
+- **Build:** `statement: sql [from :books select 'title]`
+- **Compile:** `to :sqliteQuery statement` or `to :postgresQuery statement`
+- **Execute on SQLite:** `sql.query: db statement`
+
+Compilation returns SQL and parameters. It does not execute SQL or change the
+statement.
 
 ## Identifiers and values
 
@@ -47,10 +51,11 @@ These forms also work for aliases, views, triggers and constraint columns.
 Use a literal such as `'count` when an identifier matches a DSL command or
 expression helper. Use `"*"` to select all columns or as the operand of `count`.
 
-An identifier list accepts either one identifier or a block of identifiers.
-Strings name identifiers in identifier positions, but represent values in
-predicates, expressions, assignments and rows. For example, `select "title"`
-selects a column, while `where [title = "River Atlas"]` compares it with a value.
+An identifier list accepts one name or a block of names.
+
+> [!IMPORTANT]
+> A string's role depends on its position. `select "title"` names a column;
+> `where [title = "River Atlas"]` compares that column with a bound value.
 
 Scalar values are strings, integers, floating-point numbers, booleans or null.
 Ordinary values become bind parameters. Prefix a variable with `@`, such as
@@ -67,14 +72,14 @@ statement: sql [
 ```
 
 Square brackets inside a predicate group SQL expressions. Parentheses run
-Arturo code. DSL commands such as `select`, `query` and `when` are available
-inside SQL bodies; importing the package leaves Arturo's built-ins intact.
+Arturo code.
 
 ## Query commands
 
 Each query requires one `from` and at least one projection. Clauses may appear
 in any order; compilation puts them in SQL order. Each command consumes its
-arguments regardless of line breaks.
+arguments regardless of line breaks. A body is required even for one command:
+use `->` for one complete expression and `[...]` for several commands.
 
 In the tables below, **identifier** means any name form shown above,
 **identifiers** means one name or a block of names, and **expression** means a
@@ -96,11 +101,14 @@ column, scalar value, helper call or arithmetic expression where supported.
 | `offset` | integer count | Requires limit or fetch; cannot also use `.skip:` |
 | `with` | identifier, query body block | Defines a CTE |
 
-Use a single alias for one projection and a block of aliases for several.
-Alias counts must match projection counts; wildcards cannot be aliased.
-Conflicting modes, such as `order.asc.desc`, produce an error. A query accepts
-one grouping clause and one pagination count. `group.sets` takes a nonempty
-block of grouping blocks; an individual grouping block may be empty.
+Validation rules:
+
+- Use one alias for one projection, or a matching block of aliases for several.
+  Wildcards cannot be aliased.
+- Choose one mode per command. Conflicting flags such as `order.asc.desc` fail.
+- Use at most one grouping clause and one pagination count per query.
+- Pass a nonempty block of grouping blocks to `group.sets`. Individual grouping
+  blocks may be empty.
 
 ```art
 statement: sql [
@@ -130,9 +138,11 @@ original table name. Duplicate relation aliases are rejected.
 | Null test | `where [subtitle is null]` or `where [subtitle is not null]` |
 
 Comparisons accept `=`, `<>`, `!=`, `<`, `<=`, `=<`, `>` and `>=`.
-Both `<=` and `=<` compile to SQL `<=`. Compare null with `is null` or
-`is not null`; direct comparisons with null are rejected. IN needs a nonempty
-value list; BETWEEN needs exactly two endpoints.
+Both `<=` and `=<` compile to SQL `<=`.
+
+- **Null:** use `is null` or `is not null`. Direct comparisons with null fail.
+- **IN:** supply a nonempty value list.
+- **BETWEEN:** supply exactly two endpoints.
 
 Prefix `and` and `or` each take two predicates; `not` takes one. Nested blocks
 make grouping explicit. Repeated `where` calls are another way to express AND.
@@ -194,13 +204,16 @@ Arithmetic supports `+`, `-`, `*` and `/` in prefix or infix position and groups
 from the right. Use blocks to change grouping, as in
 `where [[pageCount + 2] * 3 >= 300]`.
 
-## Subqueries, CTEs and set operations
+## Subqueries, CTEs, and set operations
 
-`query [body]` builds a nested SELECT. Scalar subqueries and comparisons using
-`all query [...]` or `any query [...]` require one projection. `exists query
-[...]` tests whether a nested query returns rows. Correlations use explicit
-outer aliases; inner aliases stay inside their query. CTE definitions have
-independent relation scopes.
+### Nested queries
+
+- `query [body]` builds a nested SELECT.
+- Scalar subqueries, `all query [...]`, and `any query [...]` require one projection.
+- `exists query [...]` tests whether a nested query returns rows.
+
+Correlated queries refer to explicit outer aliases. Inner aliases stay inside
+their query; CTE definitions have independent table and alias scopes.
 
 ```art
 statement: sql [
@@ -223,6 +236,8 @@ statement: sql [
     select 'title
 ]
 ```
+
+### Set operations
 
 Use `combine.union`, `combine.intersect` or `combine.except` with a block of at
 least two `sql [...]` SELECT calls. Projection counts must match. Each operand
@@ -262,9 +277,11 @@ statement: sql [create :books [
 statement: sql [alter :books -> add.optional 'pageCount :integer]
 ```
 
-`.optional` permits null and omits NOT NULL. It cannot combine with `.primary`.
-There is no `.required` flag. Identity requires an integer, non-optional column
-and does not add a primary key automatically.
+- `.optional` permits null and omits NOT NULL. It cannot combine with `.primary`.
+- `.required` is not a supported flag; columns are already required by default.
+- `.identity` requires an integer, non-optional column. It does not add a primary key.
+
+### Storage types
 
 | Arturo storage type | SQLite | PostgreSQL |
 | --- | --- | --- |
@@ -274,11 +291,16 @@ and does not add a primary key automatically.
 | `:floating` | REAL | DOUBLE PRECISION |
 | `:binary` | BLOB | BYTEA |
 
-Other storage types produce a compilation error. SQLite accepts one alteration
-per statement; its restrictions on adding primary or unique columns still apply.
+Other storage types produce a compilation error.
+
+- **SQLite:** use one alteration per statement. Its restrictions on adding
+  primary or unique columns still apply.
+- **PostgreSQL:** several additions or removals may share an ALTER statement,
+  but a table rename must be a separate statement.
+
 DROP COLUMN and RIGHT/FULL JOIN require a supporting SQLite runtime version.
 
-## Inserts, updates and deletes
+## Inserts, updates, and deletes
 
 | Command | Arguments | Behavior |
 | --- | --- | --- |
@@ -308,19 +330,29 @@ statement: sql [update.values: [title: "New title" subtitle: null] :books [
 statement: sql [delete :books [where [id = 2]]]
 ```
 
-Assignments and rows accept scalar values, including null. `.values:` labels
-name SQL columns. Updates and deletes without `where` affect every row.
+Assignments and rows accept scalar values, including null. Labels in `.values:`
+name SQL columns.
+
+> [!WARNING]
+> An UPDATE or DELETE without `where` affects **every row** in the table.
 
 ## Views and triggers
 
-`create.view name [query body]` creates a view; `drop.view name` drops it.
-The query body uses the same commands as a SELECT.
+**Views:** `create.view name [query body]` creates a view; `drop.view name`
+drops it. The body uses SELECT commands.
 
-`create.trigger` takes a trigger name and a block of `insert`, `update` or
-`delete` calls. It requires `.on:` with the table, exactly one timing flag
-(`.before` or `.after`), and exactly one event flag (`.insert`, `.update` or
-`.delete`). Use `new` references for INSERT, `old` for DELETE, and either for
-UPDATE.
+**Triggers:** `create.trigger` takes a name and a block of `insert`, `update`,
+or `delete` calls. Supply all three options:
+
+| Option | Choose |
+| --- | --- |
+| Table | `.on:` followed by the table identifier |
+| Timing | Exactly one of `.before` or `.after` |
+| Event | Exactly one of `.insert`, `.update`, or `.delete` |
+
+Inside the body, use `new` references for INSERT, `old` for DELETE, and either
+for UPDATE. PostgreSQL trigger names must be unqualified: use `:loanAdded`,
+not a schema path.
 
 ```art
 statement: sql [create.view :recentBooks [
@@ -337,8 +369,10 @@ statement: sql [create.trigger.after.insert.on: :loans :loanAdded [
 ]]
 ```
 
-CHECK constraints, views and triggers contain escaped SQL literals rather than
-bind parameters. Pagination counts in stored queries are also rendered inline.
+> [!NOTE]
+> Stored definitions cannot use bind parameters. CHECK constraints, views, and
+> triggers contain escaped SQL literals; pagination counts are rendered inline
+> as nonnegative integers. Ordinary queries and writes remain parameterized.
 
 ## Compiled output
 
@@ -352,12 +386,22 @@ values from CTEs, projections, joins and nested queries. SQLite adds scalar
 casts and null adapters where needed for Arturo's native parameter binding.
 Both conversions preserve the input statement.
 
-PostgreSQL `statements` contains one SQL string for an ordinary statement. A
-trigger produces two entries: CREATE FUNCTION followed by CREATE TRIGGER.
-Execute those entries in order through your PostgreSQL driver. The generated
-function has a deterministic name beginning with `sql_trigger_`; creation never
-replaces an existing function. You manage transactions and function cleanup;
-dropping a trigger or its table does not remove the helper function.
+### PostgreSQL triggers
+
+For ordinary statements, `statements` contains one SQL string. For triggers,
+execute both entries in order through your driver:
+
+1. CREATE FUNCTION
+2. CREATE TRIGGER
+
+The function has a deterministic name beginning with `sql_trigger_`. Creation
+never replaces an existing function.
+
+> [!IMPORTANT]
+> You manage transactions and generated function cleanup. Dropping a trigger
+> or its table does not remove the helper function.
+
+### Dialect support
 
 | Feature | SQLite | PostgreSQL |
 | --- | --- | --- |
@@ -367,9 +411,13 @@ dropping a trigger or its table does not remove the helper function.
 | `.identity` | Compilation error | GENERATED ALWAYS AS IDENTITY |
 | `truncate` | Compilation error | TRUNCATE TABLE |
 
-PostgreSQL support generates SQL for an external driver. It has compiler tests,
-but no server execution tests or built-in execution adapter. MySQL compilation
-is not implemented.
+> [!IMPORTANT]
+> PostgreSQL support is compilation-only. SQL generation and parameter order
+> are tested, but server execution and driver integration are not. Use an
+> external driver to execute the output.
+
+Unsupported SQLite features fail with a dialect-specific error rather than
+being replaced with a different operation. MySQL compilation is not implemented.
 
 ## Execution and formatting
 
@@ -379,10 +427,14 @@ is not implemented.
 | `sqliteExecute db statement` | Statement dictionary or `:sqliteQuery` | Native SQLite rows; compatibility wrapper |
 | `sqliteTable db statement` | Statement dictionary or `:sqliteQuery` | Formatted string; optional `.header:` block |
 
-`db` is an open native `:database` connection. You own and close it. Commands
-without rows return `[]`; database errors propagate. These helpers reject raw
-SQL strings and `:postgresQuery` objects. Plain `sql` without `.query:` accepts
-only a DSL block.
+`db` must be an open native `:database` connection.
+
+- You own the connection and must close it, including after a failure.
+- Commands that produce no rows return `[]`. Database errors propagate.
+- Execution helpers reject raw SQL strings and `:postgresQuery` objects.
+- Plain `sql` without `.query:` accepts only a DSL block.
+
+This example closes the connection before rethrowing any error:
 
 ```art
 db: open.sqlite ":memory:"
@@ -396,14 +448,24 @@ close db
 unless null? failure -> throw to :string failure
 ```
 
+### Format results
+
 `sqliteTable` returns `"No rows."` for an empty result. For nonempty results,
-header counts must match the result width. The imported `tabular` function also
-formats rows returned by `sql.query:`; guard empty results before calling it:
+header counts must match the result width.
+
+To format rows separately, use the imported `tabular` function:
 
 ```art
 rows: []
 text: (empty? rows) ? ["No rows."] [tabular.header: ["Title"] rows]
 ```
+
+> [!TIP]
+> `tabular` requires at least one row. Check for empty results before calling it,
+> as shown above.
+
+Compiled SQLite output also works with Arturo's native call:
+`query.with: compiled\params db compiled\text`.
 
 ## Compatibility syntax
 
