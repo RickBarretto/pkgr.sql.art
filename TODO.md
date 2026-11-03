@@ -43,6 +43,8 @@ not claimed. MySQL plans below remain proposals awaiting syntax decisions.
 
 ## Joins and sources
 
+- [ ] Track [Arturo's bundled Windows SQLite upgrade](https://github.com/arturo-lang/arturo/issues/2253): `sqlite3_64.dll` currently reports 3.31.1; RIGHT/FULL JOIN execution needs SQLite 3.39.0+. Keep the compatibility warning and conditional example check until supported runtimes ship a newer library.
+
 - [x] `from source`: exactly one source with optional `.as:` alias.
 - [x] [`join` / `join.inner`](api/join/inner-join.art): table and predicate with optional `.as:`.
 - [x] [`join.left`](api/join/left-join.art): LEFT JOIN.

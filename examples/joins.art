@@ -39,9 +39,15 @@ failure: try [
 
     ensure -> (sqliteExecute db innerStatement) = [["1"]]
     ensure -> (sqliteExecute db leftStatement) = [["1"] ["2"]]
-    ensure -> (sqliteExecute db rightStatement) = [["1"] ["3"]]
+    ; Older SQLite libraries (including Arturo's Windows DLL) lack RIGHT JOIN.
+    rightFailure: try [ensure -> (sqliteExecute db rightStatement) = [["1"] ["3"]]]
+    unless null? rightFailure [
+        (contains? rightFailure\message "execution requires SQLite 3.39.0 or newer") ? [
+            print join @["Warning: RIGHT JOIN execution check skipped. " rightFailure\message]
+        ] [throw.as: rightFailure\kind rightFailure\message]
+    ]
     ensure -> (sqliteExecute db selfStatement) = [["1"] ["2"]]
 ]
 close db
-unless null? failure -> throw to :string failure
+unless null? failure -> throw.as: failure\kind failure\message
 print "joins: passed"

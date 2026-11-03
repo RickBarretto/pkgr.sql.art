@@ -465,7 +465,14 @@ define :postgresQuery [
 _sqlExecute: $[db :database statement] [
     if :dictionary = type statement -> statement: to :sqliteQuery statement
     unless :sqliteQuery = type statement -> _sqlFail "Expected SQL query dictionary or sqliteQuery"
-    results: @[query.with: statement\params db statement\text]
+    results: []
+    failure: try [results: @[query.with: statement\params db statement\text]]
+    unless null? failure [
+        if contains? failure\message "RIGHT and FULL OUTER JOINs are not currently supported" [
+            _sqlFail "RIGHT and FULL OUTER JOIN execution requires SQLite 3.39.0 or newer. Upgrade the SQLite library used by Arturo (sqlite3_64.dll on Windows), or rewrite the query using LEFT JOIN."
+        ]
+        throw.as: failure\kind failure\message
+    ]
     (empty? results) ? [[]] [first results]
 ]
 
