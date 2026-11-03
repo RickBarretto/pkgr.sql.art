@@ -1,0 +1,5 @@
+; CLI input contains the DSL body, without a surrounding sql block.
+; arturo src/main.art query books.db --file examples/query.art
+from :books
+select title
+order title

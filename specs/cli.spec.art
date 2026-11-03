@@ -1,0 +1,42 @@
+import {unitt}!
+import {src/lib.art}!
+import {src/cli.art}!
+
+describe "CLI statements" [
+    it "parses DSL data and preserves bound values for both dialects" [
+        statement: cliStatement {from :books select title where [title = "O'Reilly"]} null
+        sqlite: cliCompile statement "sqlite"
+        postgres: cliCompile statement "postgres"
+        expects.be: 'equal? @[sqlite\params ["O'Reilly"]]
+        expects.be: 'equal? @[postgres\params ["O'Reilly"]]
+        expects.be: 'equal? @[contains? postgres\text "$1" true]
+    ]
+
+    it "rejects missing, conflicting, empty and invalid sources" [
+        loop [[null null] ["from :books select title" "unused.art"] ["" null] ["print 123" null]] 'inputs [
+            failure: try [ignored: cliStatement first inputs last inputs]
+            expects.be: 'equal? @[type failure :error]
+        ]
+        failure: try [ignored: cliCompile cliStatement "from :books select title" null "mysql"]
+        expects.be: 'equal? @[type failure :error]
+    ]
+]
+
+describe "CLI execution" [
+    it "returns JSON and table results and handles empty rows" [
+        statement: cliStatement {from :sqlite_master select name} null
+        expects.be: 'equal? @[read.json cliQuery ":memory:" statement "json" []]
+        expects.be: 'equal? @[cliQuery ":memory:" statement "table" "No rows."]
+        statement: cliStatement {from :sqlite_master select.count "*"} null
+        expects.be: 'equal? @[read.json cliQuery ":memory:" statement "json" [["0"]]]
+        expects.be: 'equal? @[contains? cliQuery ":memory:" statement "table" "0" true]
+    ]
+
+    it "reports query and format errors" [
+        statement: cliStatement "from :missing select name" null
+        failure: try [ignored: cliQuery ":memory:" statement "json"]
+        expects.be: 'equal? @[type failure :error]
+        failure: try [ignored: cliQuery ":memory:" statement "csv"]
+        expects.be: 'equal? @[type failure :error]
+    ]
+]

@@ -1,0 +1,34 @@
+; Helpers assume lib.art has been imported by the caller.
+
+cliStatement: $[expression sourceFile] [
+    if and? null? expression null? sourceFile -> throw "Provide a DSL expression or --file"
+    if and? not? null? expression not? null? sourceFile -> throw "Use either a DSL expression or --file"
+    source: (null? sourceFile) ? [expression] [read.file sourceFile]
+    tokens: to :block source
+    if empty? tokens -> throw "The DSL statement is empty"
+    sql tokens
+]
+
+cliCompile: $[statement dialect :string] [
+    case dialect [
+        "sqlite" -> to :sqliteQuery statement
+        "postgres" -> to :postgresQuery statement
+        any -> throw "Dialect must be sqlite or postgres"
+    ]
+]
+
+cliQuery: $[database :string statement outputFormat :string] [
+    unless contains? ["table" "json"] outputFormat -> throw "Format must be table or json"
+    if empty? database -> throw "Database path must not be empty"
+    ; Compile before opening so invalid statements cannot create database files.
+    compiled: to :sqliteQuery statement
+    db: open.sqlite database
+    rows: []
+    failure: try [rows: sql.query: db compiled]
+    closeFailure: try [close db]
+    unless null? failure -> throw failure\message
+    unless null? closeFailure -> throw closeFailure\message
+    if outputFormat = "json" -> return write.json rows null
+    if empty? rows -> return "No rows."
+    tabular rows
+]

@@ -55,6 +55,46 @@ It queries programming languages and formats the results with `tabular`.
 arturo -p install sql
 ```
 
+## Command-line interface
+
+The `sql` CLI lets you execute Arturo SQL DSL statements against SQLite databases or compile them into SQL without establishing a database connection.
+
+Install it using Arturo's package manager:
+
+```sh
+arturo -p install sql
+```
+
+### Usage
+
+```sh
+# Display available commands and options
+sql --help
+
+# Execute a query (table output by default)
+sql query books.db 'from :books select title'
+
+# Execute a query and return JSON
+sql query books.db 'from :books select title' -o json
+
+# Read a DSL statement from a file
+sql query books.db --file examples/query.art
+
+# Compile a statement into PostgreSQL SQL
+sql compile 'from :books select title' -d postgres
+```
+
+### Commands
+
+- **`query`**: Executes a DSL statement against a SQLite database. Pass the expression directly, no `sql` statement needed.
+- **`compile`**: Generates SQL text and bound parameters without connecting to a database.
+
+Statements are privided directly in the CLI, but you may also load from files using `--file`/`-f`.
+
+Files must contain a single statement using our DSL.
+
+Run `sql <command> --help` for additional options and usage details.
+
 ## Quick start
 
 Import the package, build a statement, and compile it:

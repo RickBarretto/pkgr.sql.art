@@ -1,13 +1,48 @@
-import ./{lib}!
+;; name: sql
+;; description: « Query SQLite databases with the Arturo SQL DSL
+;; version: 0.1.0
 
-minimumAge: 18
-statement: sql [
-    select [id name email]
-    from users
-    where [age >= @minimumAge and active = true]
-    orderBy [name asc]
-    limit 20
+import {climax}!
+import ./{lib}!
+import ./{cli}!
+
+; Climax's default error renderers return normally; CLI usage errors must fail.
+define :sqlTemplate is :climaxTemplate [
+    renderUnknownCommand: method [name :string] -> throw join @["Unknown command: " name]
+    renderUnknownOption: method [label :string bad :block] -> throw join @["Unknown option: " join.with:", " bad]
+    renderTooManyArgs: method [label :string got :integer maximum :integer] -> throw "Too many arguments"
+    renderMissingRequired: method [label :string missing :block] -> throw join @["Missing required argument: " to :string missing]
 ]
-compiled: to :sqliteQuery statement
-print compiled\text
-inspect compiled\params
+
+failure: try [
+    ; Climax treats an unrecognized root word as a positional with no command.
+    inputs: arg
+    unless empty? inputs [
+        firstInput: first inputs
+        isFlag: false
+        unless empty? firstInput -> isFlag: "-" = to :string get firstInput 0
+        unless or? isFlag contains? ["query" "compile"] firstInput [
+            throw join @["Unknown command: " firstInput]
+        ]
+    ]
+    climax .template: 'sql [
+        query: command "Execute a DSL statement against SQLite" [database :string expression :string :null] .with: [
+            file 'f :string "Read the DSL body from a file instead of an expression"
+            format 'o "table" :string "Output format: table or json"
+        ] [
+            unless empty? rest -> throw "Unexpected arguments after --"
+            statement: cliStatement expression opts\file
+            print cliQuery database statement opts\format
+        ]
+        compile: command "Compile a DSL statement without connecting" [expression :string :null] .with: [
+            file 'f :string "Read the DSL body from a file instead of an expression"
+            dialect 'd "sqlite" :string "SQL dialect: sqlite or postgres"
+        ] [
+            unless empty? rest -> throw "Unexpected arguments after --"
+            statement: cliStatement expression opts\file
+            compiled: cliCompile statement opts\dialect
+            print write.json #[text: compiled\text params: compiled\params] null
+        ]
+    ]
+]
+unless null? failure -> panic.unstyled join @["sql: " failure\message]
