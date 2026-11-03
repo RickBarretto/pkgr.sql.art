@@ -59,12 +59,6 @@ arturo -p install sql
 
 The `sql` CLI lets you execute Arturo SQL DSL statements against SQLite databases or compile them into SQL without establishing a database connection.
 
-Install it using Arturo's package manager:
-
-```sh
-arturo -p install sql
-```
-
 ### Usage
 
 ```sh
