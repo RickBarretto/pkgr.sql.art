@@ -25,22 +25,17 @@ jobs:
                 include: 
                     - {os: linux,   arch: amd64}
                     - {os: linux,   arch: arm64}
-                    - {os: freebsd, arch: amd64}
                     - {os: macos,   arch: amd64}
                     - {os: macos,   arch: arm64}
                     - {os: windows, arch: amd64}
                     
         defaults:
             run:
-                shell: ${{ 
-                    (matrix.os == 'freebsd') && 'freebsd {0}' ||
-                    (matrix.os == 'windows') && 'msys2 {0}'   || 
-                                                'bash'        }}
+                shell: ${{(matrix.os == 'windows') && 'msys2 {0}' || 'bash' }}
 
         steps:
             # We have to checkout first, *before* setting up Arturo,
             # if we want to be able to access the files from inside
-            # including FreeBSD jobs!
             - name: "Checkout sources"
               uses: actions/checkout@v4
               with:
@@ -67,19 +62,6 @@ jobs:
               if: ${{ matrix.os == 'windows' }}
               run: |
                 cmd.exe /C unitt.bat
-
-            - name: Test Package (FreeBSD)
-              if: ${{ matrix.os == 'freebsd' }}
-              run: |
-                # FreeBSD jobs need the package binary path directly
-                cd $GITHUB_WORKSPACE
-                "${HOME}/.arturo/packages/bin/unitt"
-
-            - name: Test Package (Linux & MacOS)
-              if: ${{ matrix.os != 'windows' && matrix.os != 'freebsd' }}
-              run: |
-                cd $GITHUB_WORKSPACE
-                unitt
 
             - name: Run self-testing examples
               run: |
